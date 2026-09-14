@@ -33,13 +33,13 @@ class AppTests(unittest.TestCase):
         self.app = ChatPlaysApp(
             {
                 "stream": {},
-                "queue": {"message_rate": 0, "max_length": 10, "workers": 1},
+                "queue": {"message_rate": 0, "max_length": 10},
                 "input": {"default_press_seconds": 0.08},
                 "commands": {"up": {"key": "up", "aliases": ["up"]}},
             },
             input_backend=self.input,
         )
-        self.addCleanup(lambda: self.app.executor.shutdown(wait=False, cancel_futures=True))
+        self.addCleanup(self.app.input_dispatcher.shutdown)
 
     def test_key_press(self):
         self.app._execute(ParsedAction("up", {"key": "up"}))
@@ -65,6 +65,16 @@ class AppTests(unittest.TestCase):
         stop_event.set()
         self.app._execute(ParsedAction("up", {"key": "up"}), stop_event)
         self.assertEqual(self.input.calls, [])
+
+    def test_handle_message_queues_input_instead_of_executing_inline(self):
+        self.app._handle_message(
+            {"message": "up", "username": "viewer", "platform": "twitch"}
+        )
+        self.assertTrue(self.app.input_dispatcher.wait_idle())
+        self.assertIn(
+            ("press_key", ("up", 0.08), {"stop_event": unittest.mock.ANY}),
+            self.input.calls,
+        )
 
     def test_early_stop_still_closes_connections_and_releases_input(self):
         connection = FakeConnection()
