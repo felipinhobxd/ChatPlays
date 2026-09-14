@@ -1,20 +1,22 @@
-from __future__ import annotations
-
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 import time
-from typing import Any
+from typing import Any, Protocol
 
 from .commands import CommandRegistry, ParsedAction
 from .connections import TwitchConnection, YouTubeConnection
 from .input import GameInput
 
 
+class Connection(Protocol):
+    def poll(self) -> list[dict[str, str]]: ...
+    def close(self) -> None: ...
+
+
 class MessageQueue:
     def __init__(self, message_rate: float, max_length: int) -> None:
         self.message_rate = max(0.0, float(message_rate))
-        self.max_length = max(1, int(max_length))
-        self.items: deque[dict[str, str]] = deque(maxlen=self.max_length)
+        self.items: deque[dict[str, str]] = deque(maxlen=max(1, int(max_length)))
         self.last_time = time.monotonic()
 
     def extend(self, messages: list[dict[str, str]]) -> None:
@@ -26,42 +28,40 @@ class MessageQueue:
             self.last_time = now
             return []
 
-        if self.message_rate == 0:
-            count = len(self.items)
-        else:
-            ratio = (now - self.last_time) / self.message_rate
-            count = int(ratio * len(self.items))
-
+        count = len(self.items) if self.message_rate == 0 else int(
+            ((now - self.last_time) / self.message_rate) * len(self.items)
+        )
         if count <= 0:
             return []
 
-        count = min(count, len(self.items))
-        out = [self.items.popleft() for _ in range(count)]
+        ready = [self.items.popleft() for _ in range(min(count, len(self.items)))]
         self.last_time = now
-        return out
+        return ready
 
 
 class ChatPlaysApp:
-    def __init__(self, config: dict[str, Any], *, input_backend: GameInput | None = None) -> None:
+    def __init__(self, config: dict[str, Any], input_backend: GameInput | None = None) -> None:
         self.config = config
-        input_cfg = config["input"]
-        self.registry = CommandRegistry(config["commands"], input_cfg["default_press_seconds"])
         self.input = input_backend or GameInput()
-        queue_cfg = config["queue"]
-        self.queue = MessageQueue(queue_cfg["message_rate"], queue_cfg["max_length"])
-        self.executor = ThreadPoolExecutor(max_workers=max(1, int(queue_cfg["workers"])))
-        self.connections: list[Any] = []
-        self._build_connections()
+        self.registry = CommandRegistry(
+            config["commands"], config["input"]["default_press_seconds"]
+        )
+        queue = config["queue"]
+        self.queue = MessageQueue(queue["message_rate"], queue["max_length"])
+        self.executor = ThreadPoolExecutor(max_workers=max(1, int(queue["workers"])))
+        self.connections = self._connections(config["stream"])
 
-    def _build_connections(self) -> None:
-        stream = self.config.get("stream", {})
+    @staticmethod
+    def _connections(stream: dict[str, Any]) -> list[Connection]:
+        connections: list[Connection] = []
         twitch = str(stream.get("twitch_channel", "")).strip()
         youtube_id = str(stream.get("youtube_channel_id", "")).strip()
         youtube_url = str(stream.get("youtube_stream_url", "")).strip()
         if twitch:
-            self.connections.append(TwitchConnection(twitch))
+            connections.append(TwitchConnection(twitch))
         if youtube_id or youtube_url:
-            self.connections.append(YouTubeConnection(youtube_id, youtube_url))
+            connections.append(YouTubeConnection(youtube_id, youtube_url))
+        return connections
 
     def run(self) -> None:
         countdown = max(0, int(self.config.get("countdown_seconds", 5)))
@@ -71,14 +71,8 @@ class ChatPlaysApp:
                 print(remaining)
                 time.sleep(1)
 
+        print("ChatPlays running. Ctrl+C stops and releases every held input.")
         try:
-            for connection in self.connections:
-                try:
-                    connection.connect()
-                except Exception as exc:
-                    print(f"[{connection.__class__.__name__}] initial connection failed: {exc}")
-
-            print("ChatPlays running. Ctrl+C stops and releases every held input.")
             while True:
                 received = 0
                 for connection in self.connections:
@@ -89,28 +83,24 @@ class ChatPlaysApp:
                 ready = self.queue.pop_ready()
                 for message in ready:
                     self.executor.submit(self._handle_message, message)
-
-                if not ready and received == 0:
+                if not ready and not received:
                     time.sleep(0.01)
         except KeyboardInterrupt:
             print("\nStopping ChatPlays...")
         finally:
             self.input.release_all()
             for connection in self.connections:
-                try:
-                    connection.close()
-                except Exception:
-                    pass
+                connection.close()
             self.executor.shutdown(wait=False, cancel_futures=True)
 
     def _handle_message(self, message: dict[str, str]) -> None:
         action = self.registry.resolve(message.get("message", ""))
         if not action:
             return
-
-        username = message.get("username", "unknown")
-        platform = message.get("platform", "chat")
-        print(f"[{platform}] {username}: {message.get('message', '')} -> {action.name}")
+        print(
+            f"[{message.get('platform', 'chat')}] {message.get('username', 'unknown')}: "
+            f"{message.get('message', '')} -> {action.name}"
+        )
         try:
             self._execute(action)
         except Exception as exc:
@@ -122,31 +112,28 @@ class ChatPlaysApp:
             return
 
         spec = action.spec
-        default_seconds = self.registry.default_press_seconds
+        duration = action.duration
+        if duration is None:
+            duration = float(spec.get("duration", self.registry.default_press_seconds))
 
         if "key" in spec:
             key = str(spec["key"])
             if action.hold and action.duration is None:
                 self.input.key_down(key)
-                return
-            duration = action.duration if action.duration is not None else float(spec.get("duration", default_seconds))
-            self.input.press_key(key, duration)
+            else:
+                self.input.press_key(key, duration)
             return
 
         if "mouse_button" in spec:
             button = str(spec["mouse_button"])
             if action.hold and action.duration is None:
                 self.input.mouse_down(button)
-                return
-            duration = action.duration if action.duration is not None else float(spec.get("duration", default_seconds))
-            self.input.click(button, duration)
+            else:
+                self.input.click(button, duration)
             return
 
-        if "mouse_move" in spec:
-            move = spec["mouse_move"]
-            if not isinstance(move, list) or len(move) != 2:
-                raise ValueError("mouse_move must be [dx, dy]")
+        move = spec.get("mouse_move")
+        if isinstance(move, list) and len(move) == 2:
             self.input.move_relative(int(move[0]), int(move[1]))
             return
-
         raise ValueError(f"command {action.name!r} has no supported action")

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import ctypes
 from ctypes import wintypes
 import sys
@@ -7,21 +5,19 @@ import threading
 import time
 
 
-KEYEVENTF_EXTENDEDKEY = 0x0001
-KEYEVENTF_KEYUP = 0x0002
-KEYEVENTF_SCANCODE = 0x0008
-INPUT_MOUSE = 0
-INPUT_KEYBOARD = 1
-MOUSEEVENTF_MOVE = 0x0001
-MOUSEEVENTF_LEFTDOWN = 0x0002
-MOUSEEVENTF_LEFTUP = 0x0004
-MOUSEEVENTF_RIGHTDOWN = 0x0008
-MOUSEEVENTF_RIGHTUP = 0x0010
-MOUSEEVENTF_MIDDLEDOWN = 0x0020
-MOUSEEVENTF_MIDDLEUP = 0x0040
+_KEYUP = 0x0002
+_SCANCODE = 0x0008
+_EXTENDED = 0x0001
+_INPUT_MOUSE = 0
+_INPUT_KEYBOARD = 1
+_MOUSE_MOVE = 0x0001
+_MOUSE_FLAGS = {
+    "left": (0x0002, 0x0004),
+    "right": (0x0008, 0x0010),
+    "middle": (0x0020, 0x0040),
+}
 
-# DirectInput scan codes. The original key-code approach is adapted from
-# DougDougGithub/TwitchPlays (MIT), with modern ctypes structures here.
+# DirectInput scan codes adapted from DougDougGithub/TwitchPlays (MIT).
 _KEY_CODES: dict[str, tuple[int, bool]] = {
     "esc": (0x01, False),
     "1": (0x02, False), "2": (0x03, False), "3": (0x04, False), "4": (0x05, False),
@@ -44,12 +40,10 @@ _KEY_CODES: dict[str, tuple[int, bool]] = {
     "up": (0x48, True), "left": (0x4B, True), "right": (0x4D, True), "down": (0x50, True),
     "delete": (0x53, True),
 }
-
-_ALIASES = {
+_KEY_ALIASES = {
     "control": "ctrl", "leftctrl": "ctrl", "leftcontrol": "ctrl",
-    "leftshift": "shift", "leftalt": "alt",
-    "return": "enter", "escape": "esc", "arrowup": "up", "arrowdown": "down",
-    "arrowleft": "left", "arrowright": "right",
+    "leftshift": "shift", "leftalt": "alt", "return": "enter", "escape": "esc",
+    "arrowup": "up", "arrowdown": "down", "arrowleft": "left", "arrowright": "right",
 }
 
 if sys.platform == "win32":
@@ -57,36 +51,31 @@ if sys.platform == "win32":
 
     class KEYBDINPUT(ctypes.Structure):
         _fields_ = [
-            ("wVk", wintypes.WORD),
-            ("wScan", wintypes.WORD),
-            ("dwFlags", wintypes.DWORD),
-            ("time", wintypes.DWORD),
+            ("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+            ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
             ("dwExtraInfo", ULONG_PTR),
         ]
 
     class MOUSEINPUT(ctypes.Structure):
         _fields_ = [
-            ("dx", wintypes.LONG),
-            ("dy", wintypes.LONG),
-            ("mouseData", wintypes.DWORD),
-            ("dwFlags", wintypes.DWORD),
-            ("time", wintypes.DWORD),
-            ("dwExtraInfo", ULONG_PTR),
+            ("dx", wintypes.LONG), ("dy", wintypes.LONG),
+            ("mouseData", wintypes.DWORD), ("dwFlags", wintypes.DWORD),
+            ("time", wintypes.DWORD), ("dwExtraInfo", ULONG_PTR),
         ]
 
     class INPUT_UNION(ctypes.Union):
         _fields_ = [("ki", KEYBDINPUT), ("mi", MOUSEINPUT)]
 
     class INPUT(ctypes.Structure):
-        _fields_ = [("type", wintypes.DWORD), ("union", INPUT_UNION)]
+        _fields_ = [("type", wintypes.DWORD), ("data", INPUT_UNION)]
 
 
 class GameInput:
-    """Small, thread-safe Windows SendInput backend for games."""
+    """Thread-safe Windows SendInput backend with reference-counted holds."""
 
     def __init__(self) -> None:
         if sys.platform != "win32":
-            raise RuntimeError("ChatPlays input currently targets Windows (SendInput/DirectInput).")
+            raise RuntimeError("ChatPlays input requires Windows.")
         self._send_input = ctypes.windll.user32.SendInput
         self._lock = threading.RLock()
         self._held_keys: dict[str, int] = {}
@@ -94,9 +83,9 @@ class GameInput:
 
     @staticmethod
     def _combo_keys(combo: str) -> list[str]:
-        keys: list[str] = []
+        keys = []
         for raw in combo.lower().replace(" ", "").split("+"):
-            key = _ALIASES.get(raw, raw)
+            key = _KEY_ALIASES.get(raw, raw)
             if key not in _KEY_CODES:
                 raise ValueError(f"unsupported key: {raw!r}")
             keys.append(key)
@@ -104,31 +93,23 @@ class GameInput:
             raise ValueError("empty key combo")
         return keys
 
-    def _send_key(self, key: str, key_up: bool) -> None:
-        scan, extended = _KEY_CODES[key]
-        flags = KEYEVENTF_SCANCODE
-        if extended:
-            flags |= KEYEVENTF_EXTENDEDKEY
-        if key_up:
-            flags |= KEYEVENTF_KEYUP
-        payload = INPUT_UNION(ki=KEYBDINPUT(0, scan, flags, 0, 0))
-        packet = INPUT(INPUT_KEYBOARD, payload)
-        sent = self._send_input(1, ctypes.byref(packet), ctypes.sizeof(INPUT))
-        if sent != 1:
+    def _send(self, packet: "INPUT") -> None:
+        if self._send_input(1, ctypes.byref(packet), ctypes.sizeof(INPUT)) != 1:
             raise ctypes.WinError()
 
+    def _send_key(self, key: str, up: bool) -> None:
+        scan, extended = _KEY_CODES[key]
+        flags = _SCANCODE | (_EXTENDED if extended else 0) | (_KEYUP if up else 0)
+        self._send(INPUT(_INPUT_KEYBOARD, INPUT_UNION(ki=KEYBDINPUT(0, scan, flags, 0, 0))))
+
     def _send_mouse(self, flags: int, dx: int = 0, dy: int = 0) -> None:
-        payload = INPUT_UNION(mi=MOUSEINPUT(dx, dy, 0, flags, 0, 0))
-        packet = INPUT(INPUT_MOUSE, payload)
-        sent = self._send_input(1, ctypes.byref(packet), ctypes.sizeof(INPUT))
-        if sent != 1:
-            raise ctypes.WinError()
+        self._send(INPUT(_INPUT_MOUSE, INPUT_UNION(mi=MOUSEINPUT(dx, dy, 0, flags, 0, 0))))
 
     def key_down(self, combo: str) -> None:
         with self._lock:
             for key in self._combo_keys(combo):
                 count = self._held_keys.get(key, 0)
-                if count == 0:
+                if not count:
                     self._send_key(key, False)
                 self._held_keys[key] = count + 1
 
@@ -152,25 +133,23 @@ class GameInput:
 
     def mouse_down(self, button: str) -> None:
         button = button.lower()
-        down_flags = {"left": MOUSEEVENTF_LEFTDOWN, "right": MOUSEEVENTF_RIGHTDOWN, "middle": MOUSEEVENTF_MIDDLEDOWN}
-        if button not in down_flags:
+        if button not in _MOUSE_FLAGS:
             raise ValueError(f"unsupported mouse button: {button!r}")
         with self._lock:
             count = self._held_mouse.get(button, 0)
-            if count == 0:
-                self._send_mouse(down_flags[button])
+            if not count:
+                self._send_mouse(_MOUSE_FLAGS[button][0])
             self._held_mouse[button] = count + 1
 
     def mouse_up(self, button: str) -> None:
         button = button.lower()
-        up_flags = {"left": MOUSEEVENTF_LEFTUP, "right": MOUSEEVENTF_RIGHTUP, "middle": MOUSEEVENTF_MIDDLEUP}
-        if button not in up_flags:
+        if button not in _MOUSE_FLAGS:
             raise ValueError(f"unsupported mouse button: {button!r}")
         with self._lock:
             count = self._held_mouse.get(button, 0)
             if count <= 1:
                 if count:
-                    self._send_mouse(up_flags[button])
+                    self._send_mouse(_MOUSE_FLAGS[button][1])
                 self._held_mouse.pop(button, None)
             else:
                 self._held_mouse[button] = count - 1
@@ -184,15 +163,13 @@ class GameInput:
 
     def move_relative(self, dx: int, dy: int) -> None:
         with self._lock:
-            self._send_mouse(MOUSEEVENTF_MOVE, int(dx), int(dy))
+            self._send_mouse(_MOUSE_MOVE, int(dx), int(dy))
 
     def release_all(self) -> None:
         with self._lock:
-            for key in list(self._held_keys):
+            for key in tuple(self._held_keys):
                 self._send_key(key, True)
+            for button in tuple(self._held_mouse):
+                self._send_mouse(_MOUSE_FLAGS[button][1])
             self._held_keys.clear()
-
-            up_flags = {"left": MOUSEEVENTF_LEFTUP, "right": MOUSEEVENTF_RIGHTUP, "middle": MOUSEEVENTF_MIDDLEUP}
-            for button in list(self._held_mouse):
-                self._send_mouse(up_flags[button])
             self._held_mouse.clear()

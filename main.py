@@ -1,41 +1,40 @@
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
-import shutil
 import sys
 
+from chatplays import __version__
 from chatplays.app import ChatPlaysApp
 from chatplays.commands import CommandRegistry
-from chatplays.config import ConfigError, load_config
+from chatplays.config import ConfigError, create_default_config, load_config
+
+
+def default_config_path() -> Path:
+    base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path.cwd()
+    return base / "config.json"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Let Twitch/YouTube chat control a game.")
-    parser.add_argument("--config", default="config.json", help="Path to config JSON")
+    parser.add_argument("--config", help="Path to config JSON")
     parser.add_argument("--check", action="store_true", help="Validate config and exit")
+    parser.add_argument("--version", action="version", version=f"ChatPlays {__version__}")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    config_path = Path(args.config)
-    if not config_path.exists() and config_path.name == "config.json":
-        example = Path("config.example.json")
-        if example.exists():
-            shutil.copyfile(example, config_path)
-            print("Created config.json from config.example.json.")
-            print("Edit config.json, set your Twitch channel and/or YouTube stream, then run again.")
-            return 0
+    config_path = Path(args.config) if args.config else default_config_path()
+    if not config_path.exists():
+        create_default_config(config_path)
+        print(f"Created {config_path}")
+        print("Set your Twitch channel and/or YouTube stream there, then run ChatPlays again.")
+        return 0
 
     try:
         config = load_config(config_path)
         CommandRegistry(config["commands"], config["input"]["default_press_seconds"])
-    except ConfigError as exc:
+    except (ConfigError, ValueError) as exc:
         print(f"Config error: {exc}", file=sys.stderr)
-        return 2
-    except ValueError as exc:
-        print(f"Command config error: {exc}", file=sys.stderr)
         return 2
 
     if args.check:

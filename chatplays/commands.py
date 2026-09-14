@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 import re
 import unicodedata
@@ -7,6 +5,8 @@ from typing import Any
 
 
 _DURATION_RE = re.compile(r"^(\d+(?:[.,]\d+)?)(ms|s)?$", re.IGNORECASE)
+_RELEASE = {"release", "release all", "soltar", "soltar tudo"}
+_HOLD_PREFIXES = ("hold ", "segurar ")
 
 
 def normalize(text: str) -> str:
@@ -15,14 +15,14 @@ def normalize(text: str) -> str:
     return " ".join(text.split())
 
 
-def parse_duration(value: str, *, minimum: float = 0.001, maximum: float = 10.0) -> float:
+def parse_duration(value: str, minimum: float = 0.001, maximum: float = 10.0) -> float:
     match = _DURATION_RE.fullmatch(normalize(value))
     if not match:
         raise ValueError(f"invalid duration: {value!r}")
 
-    number = float(match.group(1).replace(",", "."))
-    unit = (match.group(2) or "s").lower()
-    seconds = number / 1000.0 if unit == "ms" else number
+    seconds = float(match.group(1).replace(",", "."))
+    if (match.group(2) or "s").lower() == "ms":
+        seconds /= 1000
     if not minimum <= seconds <= maximum:
         raise ValueError(f"duration must be between {minimum}s and {maximum}s")
     return seconds
@@ -39,72 +39,55 @@ class ParsedAction:
 
 class CommandRegistry:
     def __init__(self, commands: dict[str, dict[str, Any]], default_press_seconds: float = 0.08):
-        self.commands = commands
         self.default_press_seconds = float(default_press_seconds)
         self._aliases: dict[str, tuple[str, dict[str, Any]]] = {}
 
         for name, spec in commands.items():
-            aliases = list(spec.get("aliases", []))
-            aliases.append(name)
-            for alias in aliases:
+            for alias in (*spec.get("aliases", []), name):
                 key = normalize(str(alias))
                 if not key:
                     continue
-                if key in self._aliases and self._aliases[key][0] != name:
-                    other = self._aliases[key][0]
-                    raise ValueError(f"duplicate command alias {alias!r}: {other!r} and {name!r}")
+                previous = self._aliases.get(key)
+                if previous and previous[0] != name:
+                    raise ValueError(f"duplicate command alias {alias!r}: {previous[0]!r} and {name!r}")
                 self._aliases[key] = (name, spec)
 
     def resolve(self, message: str) -> ParsedAction | None:
         text = normalize(message)
         if not text:
             return None
+        if text in _RELEASE:
+            return ParsedAction("release", {}, release_all=True)
 
-        if text in {"release", "release all", "soltar", "soltar tudo"}:
-            return ParsedAction(name="release", spec={}, release_all=True)
-
-        for prefix in ("hold ", "segurar "):
+        for prefix in _HOLD_PREFIXES:
             if text.startswith(prefix):
-                return self._resolve_hold(text[len(prefix) :])
+                return self._resolve_hold(text.removeprefix(prefix))
 
         found = self._aliases.get(text)
         if not found:
             return None
-
         name, spec = found
         duration = spec.get("duration")
-        if duration is not None:
-            duration = float(duration)
-        return ParsedAction(name=name, spec=spec, duration=duration)
+        return ParsedAction(name, spec, duration=float(duration) if duration is not None else None)
 
     def _resolve_hold(self, body: str) -> ParsedAction | None:
         body = normalize(body)
         if not body:
             return None
 
-        duration: float | None = None
-        alias_text = body
-        parts = body.rsplit(" ", 1)
-        if len(parts) == 2:
+        alias, duration = body, None
+        if " " in body:
+            candidate, maybe_duration = body.rsplit(" ", 1)
             try:
-                duration = parse_duration(parts[1])
-                alias_text = parts[0]
+                duration = parse_duration(maybe_duration)
+                alias = candidate
             except ValueError:
                 pass
 
-        found = self._aliases.get(alias_text)
+        found = self._aliases.get(alias)
         if not found:
             return None
-
         name, spec = found
-        if "key" not in spec and "mouse_button" not in spec:
+        if not ({"key", "mouse_button"} & spec.keys()):
             return None
-        return ParsedAction(name=name, spec=spec, hold=True, duration=duration)
-
-    def describe(self) -> list[str]:
-        rows: list[str] = []
-        for name, spec in self.commands.items():
-            aliases = [str(a) for a in spec.get("aliases", [])]
-            target = spec.get("key") or spec.get("mouse_button") or spec.get("mouse_move")
-            rows.append(f"{name}: {', '.join(aliases) or name} -> {target}")
-        return rows
+        return ParsedAction(name, spec, hold=True, duration=duration)

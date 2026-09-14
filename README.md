@@ -1,87 +1,98 @@
 # ChatPlays
 
-A small Python app that lets **Twitch and/or YouTube live chat control the game currently focused on your Windows PC**.
+**Twitch/YouTube chat → real keyboard and mouse input.**
 
-This rewrite intentionally follows the spirit of [DougDoug's TwitchPlays](https://github.com/DougDougGithub/TwitchPlays): very little setup, very little code, and game input that behaves like real keyboard/mouse input. ChatPlays adds a cleaner config file, Twitch + YouTube at the same time, PT-BR aliases, safe HOLD/release, thread-safe overlapping inputs, tests, and automatic reconnects.
+ChatPlays v4 is intentionally small. It keeps the useful idea behind [DougDoug's TwitchPlays](https://github.com/DougDougGithub/TwitchPlays) and removes the old project's heavy Node/web/installer architecture.
 
-## Why this version is simpler
+## Download — Windows
 
-- Python instead of Node.js.
-- One runtime dependency: `requests`.
-- No web wizard, local server, installer framework, dashboard, profiles database, or bundled drivers.
-- No Twitch OAuth required for reading public chat.
-- No YouTube API key required.
-- Commands live in one `config.json` file.
-- Windows `SendInput` is used directly, so there is no `pyautogui`/`pynput`/`keyboard` stack.
-- `Ctrl+C` always releases keys and mouse buttons before exiting.
+Download **`ChatPlays.exe`** from the latest GitHub Release and run it.
 
-## Start on Windows
+On first launch it creates `config.json` beside the executable. Open that file, set your Twitch channel and/or YouTube channel/live URL, save it, then run ChatPlays again and focus the game.
 
-1. Install Python 3.10+.
-2. Double-click `run.bat`.
-3. On first run, ChatPlays creates `config.json` from `config.example.json`.
-4. Put your Twitch channel and/or YouTube channel/live URL in `config.json`.
-5. Run `run.bat` again, focus the game during the countdown, and let chat play.
+No Python, Node.js, browser wizard, API key, or installer is required for the release build.
 
-You can also run it manually:
+## What it does
+
+- Reads public **Twitch** chat anonymously over IRC/TLS.
+- Reads **YouTube Live** chat without an API key.
+- Twitch and YouTube can run **at the same time**.
+- Sends keyboard scan codes through Windows `SendInput`.
+- Sends relative mouse movement/clicks for games such as Minecraft.
+- Supports PT-BR and English aliases.
+- Supports `hold` / `segurar` from 1 ms to 10 s or indefinitely.
+- `release` / `soltar` releases every input ChatPlays is holding.
+- Bounded DougDoug-style message queue prevents a whole chat batch firing at once.
+- Reconnects one platform without freezing the other.
+- `Ctrl+C` releases held inputs before shutdown.
+
+## Configuration
+
+The first launch writes a ready-to-edit `config.json`. A command is just data:
+
+```json
+"jump": {"key": "space", "aliases": ["jump", "pular", "pulo"]}
+```
+
+Supported actions:
+
+- `"key": "x"` or combos such as `"shift+f5"`
+- `"mouse_button": "left"` (`left`, `right`, `middle`)
+- `"mouse_move": [80, 0]` for relative camera movement
+- optional `"duration": 0.2` in seconds
+
+Chat examples:
+
+```text
+cima
+pular
+clique
+hold cima 2s
+segurar clique 500ms
+hold w
+soltar
+```
+
+The default file includes emulator arrows/A/B plus WASD, jump, mouse clicks and camera movement. Delete or change commands you do not use.
+
+## Run from source
+
+Requires Python 3.10+ on Windows:
 
 ```powershell
 py -3 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
-copy config.example.json config.json
 .venv\Scripts\python main.py
 ```
 
-Validate the config without connecting:
+Or double-click `run.bat`.
+
+Useful commands:
 
 ```powershell
 .venv\Scripts\python main.py --check
+.venv\Scripts\python main.py --version
+python -m unittest discover -s tests -v
 ```
 
-## Commands
+## Project layout
 
-Commands are data, not code. Example:
-
-```json
-"jump": { "key": "space", "aliases": ["jump", "pular", "pulo"] }
+```text
+main.py                  entry point
+chatplays/app.py         runtime + queue
+chatplays/commands.py    parser + aliases + HOLD
+chatplays/connections.py Twitch + YouTube readers
+chatplays/input.py       Windows SendInput backend
+chatplays/config.py      defaults + config validation
+tests/                   targeted regression tests
 ```
 
-Supported action fields:
+## Scope
 
-- `"key": "x"` — keyboard key or combo such as `shift+f5`.
-- `"mouse_button": "left"` — left/right/middle click.
-- `"mouse_move": [80, 0]` — relative mouse movement, useful for camera control.
-- `"duration": 0.2` — optional press duration in seconds.
+v4 deliberately targets the **foreground game on Windows**. That removes a large amount of fragile window targeting, launcher automation, local web UI, bundled drivers, virtual gamepad code and installer maintenance.
 
-Built-in chat syntax:
-
-- `up`, `cima`, `a`, `jump`, `click`, etc. run configured actions.
-- `hold up 2s` / `segurar cima 500ms` holds an input for a specific time.
-- `hold up` keeps it held until `release` / `soltar`.
-- `release` / `soltar` immediately releases everything ChatPlays is holding.
-
-The example config already includes classic emulator controls plus Minecraft-friendly WASD, jump, click and camera commands. Delete or change anything you do not want.
-
-## Queue
-
-The queue keeps the useful behavior from DougDoug's template: chat messages can be spread over a short time instead of firing an entire Twitch batch at once.
-
-```json
-"queue": {
-  "message_rate": 0.35,
-  "max_length": 20,
-  "workers": 20
-}
-```
-
-Set `message_rate` to `0` for immediate processing.
-
-## Notes
-
-- The game must be the foreground window. This is intentional: it is much simpler and more compatible with games than the old background-window system.
-- ChatPlays is Windows-first because its game input backend uses Windows `SendInput` scan codes.
-- YouTube's public live-chat page can change over time; the reader reconnects automatically, but a future YouTube markup change may require a small update.
+If a feature makes the core harder to understand than the feature is worth, it should stay out of the core.
 
 ## Credits
 
-ChatPlays is MIT licensed. Parts of the connection approach and DirectInput key-code mapping are adapted from DougDoug's MIT-licensed TwitchPlays project. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+ChatPlays is MIT licensed. Parts of the Twitch/YouTube connection approach and DirectInput scan-code mapping are adapted from DougDoug's MIT-licensed TwitchPlays project and prior contributors. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
