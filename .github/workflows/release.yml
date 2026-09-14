@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [chatplays/__init__.py]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          $version = python -c "from chatplays import __version__; print(__version__)"
+          if ($version.Contains("-")) { throw "Refusing stable release for prerelease version $version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt ruff pyinstaller
+      - name: Validate
+        run: |
+          ruff check .
+          python -m compileall -q main.py chatplays tests
+          python -m unittest discover -s tests -v
+      - name: Build
+        run: pyinstaller --clean --onefile --name ChatPlays main.py
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Copy-Item README.md dist/README.md
+          Copy-Item THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
+          Compress-Archive -Path dist/ChatPlays.exe,dist/README.md,dist/THIRD_PARTY_NOTICES.md -DestinationPath dist/ChatPlays-Windows.zip
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $tag = "v$env:VERSION"
+          if (gh release view $tag 2>$null) {
+            gh release upload $tag dist/ChatPlays.exe dist/ChatPlays-Windows.zip --clobber
+          } else {
+            gh release create $tag dist/ChatPlays.exe dist/ChatPlays-Windows.zip `
+              --target $env:GITHUB_SHA `
+              --title "ChatPlays $tag" `
+              --notes-file RELEASE_NOTES.md
+          }

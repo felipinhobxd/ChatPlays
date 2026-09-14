@@ -1,45 +1,8 @@
-# Dependências
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Arquivo de configuração com segredos (NUNCA commitar)
-.env
-# Transitório da gravação atômica do .env (contém segredos até o rename)
-.env.tmp
-
-# Dados gerados em runtime pelo bot (stats, controles, emulador — são do
-# usuário, não do repositório; criados quando se roda o bot a partir do clone)
-dados/
-
-# Arquivos do sistema operacional
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+config.json
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# Editor / IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Logs
-logs/
-*.log
-
-# Pastas de build
-dist/
-build/
-
-# ROMs de jogos (não incluímos ROMs por questões de copyright)
-*.gba
-*.gbc
-*.nds
-*.zip
-*.7z
-
-# Variáveis locais de ambiente
-.env.local
-.env.*.local

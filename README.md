@@ -1,206 +1,98 @@
 # ChatPlays
 
-> **Let your Twitch/YouTube chat play the game.** Turns live chat messages into real key presses — Pokémon on an emulator, Minecraft, or almost any keyboard-driven game. The classic Twitch Plays experience, running on your own stream.
+**Twitch/YouTube chat → real keyboard and mouse input.**
 
-[![Release](https://img.shields.io/github/v/release/felipinhobxd/ChatPlays?label=release)](https://github.com/felipinhobxd/ChatPlays/releases)
-[![License](https://img.shields.io/github/license/felipinhobxd/ChatPlays)](./LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![CI](https://github.com/felipinhobxd/ChatPlays/actions/workflows/ci.yml/badge.svg)](https://github.com/felipinhobxd/ChatPlays/actions/workflows/ci.yml)
-[![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-9146FF)](#development-nodejs--18)
-[![Twitch chat](https://img.shields.io/badge/chat-Twitch-9146FF?logo=twitch&logoColor=white)](https://www.twitch.tv/sindromegames)
-[![YouTube chat](https://img.shields.io/badge/chat-YouTube-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@SindromeGames)
+ChatPlays v4 is intentionally small. It keeps the useful idea behind [DougDoug's TwitchPlays](https://github.com/DougDougGithub/TwitchPlays) and removes the old project's heavy Node/web/installer architecture.
 
-## Highlights
+## Download — Windows
 
-- **Plug-and-play** — run `ChatPlays-Setup.exe`, the config wizard opens in your browser, done. No Node.js, no build tools, no Notepad.
-- **Setup wizard on every start** — opening `iniciar.bat` always shows the config UI in your browser, **pre-filled with everything you saved before** (Twitch bot, keys — shown masked —, game paths…): review, tweak, hit *Save & start*. Toggle Twitch/YouTube, **test each connection** before saving, set the **game path + ROM** with a one-click launch, or on Windows choose a game/app that is already open. `--direto` skips it; `npm run assistente` opens it standalone.
-- **Any game, any emulator — plus Minecraft launchers** — normal games/emulators use their `.exe`; for Minecraft Java, select the Minecraft preset and paste the launcher path. **ATLauncher is automated**: ChatPlays opens/reuses it, goes to **Instances → Play**, then watches the real Java/Minecraft process and can relaunch it after a crash.
-- **Window mode** — keys go **straight to the emulator window** (via `PostMessage`), even minimized or unfocused. You're free to use OBS while the chat plays.
-- **Mouse + virtual gamepad** — chat can move/click inside the game window or globally. The dedicated **Game / Minecraft** mode focuses the exact saved PID and injects relative `SendInput` motion/clicks for 3D games; Windows can also drive a virtual Xbox 360 controller via ViGEm (installer and `ViGEmClient.dll` bundled, with distinct failure diagnostics on the dashboard).
-- **Game profiles** — keep separate executable/ROM/input/cooldown/control settings per game (`iniciar.bat --perfis`).
-- **Command tester + diagnostics** — safely preview how a chat message is parsed in the wizard; inspect runtime health at `http://localhost:8899/dashboard`.
-- **Fully configurable chat controls** — the wizard's **🎮 Chat Controls** section maps *any action* to *any key* and *any chat word*: remap A/B/directions, or add brand-new actions (`Pular → Space → pular, jump, espaço`). Aliases are auto-suggested (PT-BR + EN), editable, and checked for conflicts/reserved words before saving. Works for **any game** — Minecraft, Terraria, whatever — with no code changes. Both Twitch and YouTube read the same registry; `!comandos` and the auto-announcement always reflect what you configured. Presets (VBA-M, mGBA, DeSmuME, RetroArch) are just **starting templates**.
-- **Democracy / Anarchy** — the classic vote mode: chat votes each step, only the most-voted input runs (works with custom controls too).
-- **Save states from chat** — `salvar` / `carregar` let the crowd rewind time.
-- **Unified HOLD (1 ms–10 s)** — real down→up on keyboard keys, mouse buttons (mining/placing in Minecraft, charged shots) and gamepad buttons/triggers/sticks; `soltar`/F9 release everything instantly.
-- **Streamer kit** — hotkey pause (F9), OBS overlay with live feed and ranking, persistent stats, auto update check.
-- **Solid** — extensive automated regression suite, async key queue, anti-spam, auto-reconnect, clean `Ctrl+C`.
+Download **`ChatPlays.exe`** from the latest GitHub Release and run it.
 
-## Quick start (Windows)
+On first launch it creates `config.json` beside the executable. Open that file, set your Twitch channel and/or YouTube channel/live URL, save it, then run ChatPlays again and focus the game.
 
-1. **Download and run** `ChatPlays-Setup.exe` from the [latest release](https://github.com/felipinhobxd/ChatPlays/releases/latest) — installs per-user (no admin), with Start menu shortcuts and uninstaller. *(Portable alternative: `ChatPlays-Windows.zip`.)* Upgrading from an older *Pokemon Chat Plays* install? It upgrades in place — no duplicates, old shortcuts are cleaned up automatically.
-2. **Every start opens the setup wizard** in your browser, **pre-filled with what you saved last time** — toggle Twitch/YouTube, paste your bot credentials and the live URL; the wizard **tests each connection** before saving. Then hit **Save & start** (or *Start without saving*). Saved keys come back **masked** (`••••••••abcd`): leave the field as-is to keep the saved value, clear it to remove, paste a new one to replace.
-3. In **🎮 Game / Emulator**, paste the game/emulator executable **or click “🪟 Procurar apps abertos” and select a game that is already running** (for example `Minecraft* 26.2 — javaw.exe` or `Peggle — Peggle.exe`). The wizard remembers the exact PID/title, so it will not attach to another `javaw.exe`. For **Minecraft Java**, you can instead choose the Minecraft preset and paste the launcher path (example: `C:\Users\Admin\AppData\Roaming\ATLauncher\ATLauncher.exe`). ATLauncher is opened/reused and ChatPlays drives **Instances → Play** automatically.
-4. In the wizard's **🎮 Chat Controls** card, check the action → key → chat-word mapping. Apply a **template** (VBA-M, mGBA, DeSmuME, RetroArch) as a starting point and then customize freely: capture keys with the ⌨ button, add controls like `Pular → Space → pular, jump`, disable what the game doesn't use.
-5. Hit **Save & start** — the bot **opens the game with the ROM automatically** (or attaches to it if already running) and announces the commands in chat. If the game crashes, the bot **reopens it** with the same ROM.
+No Python, Node.js, browser wizard, API key, or installer is required for the release build.
 
-> 🛡️ *Windows says "protected your PC"? The exe has no digital signature — click **More info → Run anyway**.*
-> 🔒 *Never share your `.env` — it contains your bot token.*
+## What it does
 
-## Chat commands
+- Reads public **Twitch** chat anonymously over IRC/TLS.
+- Reads **YouTube Live** chat without an API key.
+- Twitch and YouTube can run **at the same time**.
+- Sends keyboard scan codes through Windows `SendInput`.
+- Sends relative mouse movement/clicks for games such as Minecraft.
+- Supports PT-BR and English aliases.
+- Supports `hold` / `segurar` from 1 ms to 10 s or indefinitely.
+- `release` / `soltar` releases every input ChatPlays is holding.
+- Bounded DougDoug-style message queue prevents a whole chat batch firing at once.
+- Reconnects one platform without freezing the other.
+- `Ctrl+C` releases held inputs before shutdown.
 
-No prefix needed — any message that is exactly a command triggers it. Accents are ignored. **The list below is the default control set** — everything is editable in the wizard (see [Chat Controls](#chat-controls-fully-configurable)).
+## Configuration
 
-| Command | Action |
-|---|---|
-| `up` `down` `left` `right` (or `cima` `baixo` `esquerda` `direita`) | Move |
-| `a` `b` `l` `r` `start` `select` | Buttons |
-| `hold cima` · `hold baixo 3` · `hold up 500ms` · `hold w 37ms` | Hold a key — **1 ms to 10 s**, decimal seconds (`2.5s`), bare numbers stay seconds (≤30) |
-| `soltar` / `release` | Release ALL held inputs: keys, mouse buttons, gamepad |
-| `salvar` / `carregar` (or `save` / `load`) | Emulator save state / load state |
-| `dialogo` / `dialogue` | Repeated A presses for 5 seconds |
-| `mouse cima/baixo/esquerda/direita`, `olhar cima/baixo/esquerda/direita`, `mouse 50 50`, `clique` | Mouse/camera controls (Minecraft-friendly aliases included) |
-| `hold clique 3s` · `hold clique direito 2.5s` · `segurar botão esquerdo 250ms` | Real mouse-button HOLD (down → duration → up) — window, game and global modes |
-| `hold pad a 250ms` · `hold pad rt 75 500ms` · `hold pad ls direita 2s` | Virtual gamepad HOLD (buttons, triggers, sticks — same 1 ms–10 s range) |
-| `pad a`, `pad direita`, `pad ls direita`, `pad rt 75` | Virtual Xbox gamepad (Windows + ViGEm) |
+The first launch writes a ready-to-edit `config.json`. A command is just data:
 
-**Info commands** (with `!`): `!comandos` (full list) · `!stats` · `!top` · `!uptime` · `!recorde` · `!democracia` / `!anarquia` / `!votacao` · `!segurar` (hold help). Greetings like `oi`/`hello` get a friendly reply with a command tip.
-
-## Democracy × Anarchy
-
-| Mode | How it works |
-|---|---|
-| ⚡ **Anarchy** (default) | Every command runs immediately, in arrival order — classic chaos |
-| 🗳️ **Democracy** | Chat votes during a window (default 10 s); only the most-voted command runs at the end |
-
-- `!democracia` / `!anarquia` are **mode votes**: a strict majority of recent voters is required, with at least 2 unique people. Votes expire after 30 s and approved chat switches respect the anti-flip-flop cooldown.
-- The streamer hotkey **F8** switches immediately.
-- **Streamer hotkey F8** toggles the mode at any time.
-- Voting works like playing: sending `up` or `a` counts as one vote (changeable — last vote wins). Ties go to whoever got the first vote sooner.
-- The OBS overlay shows the live tally with countdown.
-
-## Streamer tools
-
-| Tool | How |
-|---|---|
-| ⏸️ **Pause the chat** | Press **F9** anywhere (configurable via `TECLA_PAUSA`). Releases held keys, warns the chat, overlay turns red. ENTER in the terminal also works. |
-| 🗳️ **Switch mode** | Press **F8** (configurable via `TECLA_MODO`). Or type `modo` in the terminal. |
-| 🖥️ **OBS overlay** | Add a Browser source pointing to `http://localhost:8899` — live feed, vote tally, gamepad, top players, held keys and status. |
-| 🩺 **Diagnostics** | Open `http://localhost:8899/dashboard` locally for platform, queue, cooldown, gamepad and recent warning/error status. |
-| 📊 **Persistent stats** | Ranking and uptime survive restarts (`dados/stats.json`). |
-| 📦 **Update check** | The bot warns in the terminal when a new release is out. |
-
-**While paused:** game commands are blocked (including democracy winners) — info commands still work. The channel owner is exempt from cooldown.
-
-## Chat Controls (fully configurable)
-
-Every control is a triple: **action → keyboard key → chat words**. The wizard's **🎮 Chat Controls** card edits them all — and new controls need **zero code changes**:
-
-- **Remap built-ins** — change the key or the chat words of `A`, `B`, directions, Start, Select, savestates.
-- **Add any action** — Minecraft in 2 minutes: `Pular → Space → pular, pulo, jump` · `Inventário → E → inventario, inventory, e` · `Agachar → Shift → agachar, crouch`.
-- **Key capture** — press the ⌨ button and then the physical key: `Space`→`space`, `Shift+F5`→`shift+f5`, arrows, `F1`–`F12`… Only keys the keyboard backend actually supports are accepted.
-- **Auto-suggested aliases** — from the key (`space` → `space, espaço, barra de espaço`; `up` → `up, cima`) and the action name; always visible and editable. Accents are normalized (`espaço` ≡ `espaco`), duplicates collapse.
-- **Conflict protection** — the same chat word on two active controls, or reserved system words (`hold`, `soltar`, `comandos`…), are **rejected before saving** — the wizard never silently picks a winner.
-- **Same registry everywhere** — Twitch and YouTube, `!comandos`, the auto-announcement, democracy voting, hold, stats and the OBS overlay all read the same control list. Overlay, confirmations and winner messages use your action names.
-- **Persistence** — controls are saved in `dados/controles.json` (versioned, atomic writes, survives reinstall/uninstall). Until you save controls in the wizard, `EMULADOR_PRESET` + `TECLA_*` from `.env` keep working exactly as before.
-- **Templates, not limits** — the presets below just pre-fill the list; after applying one, edit whatever you want (the badge shows *Personalizado*).
-
-## Emulator templates
-
-The bot ships with key presets (set `EMULADOR_PRESET` in `.env`, or apply one in the wizard):
-
-| Preset | A | B | L | R | Start | Select | Save / Load |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|---|
-| `vbam` *(default)* | X | Z | A | S | Enter | Backspace | Shift+F5 / F5 |
-| `mgba` | X | Z | A | S | Enter | Backspace | Shift+F5 / F5 |
-| `desmume` | X | Z | Q | W | Enter | Shift | Shift+F5 / F5 |
-| `retroarch` | X | Z | Q | W | Enter | Shift | F2 / F4 |
-
-Override any single key with `TECLA_A=x`, `TECLA_SALVAR=shift+f1`, etc. Accepted names: arrows, `enter`, `backspace`, `space`, `tab`, `esc`, `shift`, `f1`–`f12`, `a`–`z`, `0`–`9`, and combos like `shift+f5`. Invalid keys never crash the bot — it warns and keeps the default.
-
-> ⚠️ **RetroArch** reads the keyboard by polling, not messages — use `MODO_TECLADO=global` for it.
-
-## Game manager (open · watch · reopen)
-
-Set `EMULADOR_EXE` (the wizard does it for you) and the bot takes care of the game itself:
-
-- **On boot** — normal games use `spawn(exe, [ROM, ...args])`. With the Minecraft preset + ATLauncher, the configured `.exe` is a **launcher**: ChatPlays opens/reuses ATLauncher and triggers **Instances → Play**, while the watchdog tracks the real Java/Minecraft process instead of the launcher.
-- **Watchdog** — the game closes mid-stream → the bot waits `JOGO_REINICIAR_DELAY_MS` (3 s) and reopens it. Minecraft gets a startup grace period while Java loads; the launcher staying open does **not** count as the game running.
-- **Crash-loop guard** — if the game dies "instantly" (under `JOGO_VIDA_MINIMA_MS`, 5 times in a row — wrong ROM, broken exe…), the bot **gives up** and warns instead of reopening forever. A run that lasted longer resets the counter, so real mid-stream crashes always get a reopen.
-- **Ctrl+C never kills your game** — the watchdog stops, the game stays.
-
-It works with anything you can launch: `EMULADOR_EXE=C:\Emuladores\visualboyadvance-m.exe` + `JOGO_ROM=C:\Games\Pokemon - Emerald.gba`. Minecraft Java is special: use `EMULADOR_PRESET=minecraft` + an ATLauncher path. See [Minecraft + ATLauncher](docs/MINECRAFT-ATLAUNCHER.md). For extra flags (RetroArch cores etc.) use `JOGO_ARGS`.
-
-## Configuration (`.env`)
-
-Copy `.env.example` → `.env` — or just open `iniciar.bat` (the wizard opens on every start, pre-filled) and fill everything in the browser. The essentials:
-
-| Variable | Default | Description |
-|---|:---:|---|
-| `TWITCH_BOT_USERNAME` / `TWITCH_OAUTH_TOKEN` / `TWITCH_CHANNEL` | — | Twitch bot credentials (token from [twitchtokengenerator.com](https://twitchtokengenerator.com/)) |
-| `YOUTUBE_ENABLED` / `YOUTUBE_API_KEY` / `YOUTUBE_VIDEO_ID` | `false` | Optional YouTube live chat (read-only, API key). `YOUTUBE_VIDEO_ID` accepts the **full live URL** — the bot extracts the ID |
-| `ACTIVE_PLATFORMS` | `twitch` | Platforms to connect (`twitch,youtube`) |
-| `COMMAND_COOLDOWN_MS` | `1500` | Per-user cooldown — nobody solo-controls the game |
-| `KEY_PRESS_DURATION_MS` | `230` | How long each key tap lasts |
-| `EMULADOR_PRESET` / `EMULADOR_EXE` / `MODO_TECLADO` | `vbam` / *(ask at boot)* / `janela` | Emulator layout, target exe and key delivery mode |
-| `MODO_MOUSE` / `MOUSE_PASSO_PX` | `janela` / `40` | `janela`, `jogo` (relative SendInput + focus), `global` or `off`; movement step |
-| `GAMEPAD_ENABLED` / `GAMEPAD_TAP_MS` / `GAMEPAD_ANALOG_MS` | `auto` / `220` / `320` | Virtual Xbox controller mode/timings (Windows + ViGEm) |
-| `GAMEPAD_VIGEM_DLL` | — | Optional path to `ViGEmClient.dll` |
-| `COMMAND_COOLDOWNS` | — | Per-command/group cooldowns, e.g. `dialogo=10s, mouse=2s` |
-| `CONTROLES_ARQUIVO` | `dados/controles.json` | Where the wizard-saved control registry lives (has priority over `EMULADOR_PRESET`/`TECLA_*`) |
-| `JOGO_ROM` / `JOGO_ARGS` / `JOGO_AUTO_REINICIAR` | — / — / `true` | Game manager: ROM opened with the exe, extra launch args, auto-reopen on crash |
-| `JOGO_REINICIAR_DELAY_MS` / `JOGO_TENTATIVAS_MAX` / `JOGO_VIDA_MINIMA_MS` | `3000` / `5` / `15000` | Reopen delay and crash-loop limits |
-| `MODO_INICIAL` / `VOTACAO_INTERVALO_MS` / `VOTACAO_TROCA_MIN_MS` | `anarquia` / `10000` / `30000` | Democracy settings |
-| `TECLA_PAUSA` / `TECLA_MODO` | `f9` / `f8` | Streamer hotkeys (`off` disables) |
-| `OVERLAY_ATIVA` / `OVERLAY_PORTA` | `true` / `8899` | OBS overlay server |
-| `STATS_PERSISTENTES` / `STATS_ARQUIVO` | `true` / `dados/stats.json` | Persistent stats |
-
-See `.env.example` for the full annotated list — every option has a comment explaining it.
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| Windows blocked the exe | More info → Run anyway (no digital signature) |
-| Keys don't reach the game | Emulator closed? The bot warns when the target window is missing — and with `EMULADOR_EXE` set it **reopens the game for you**. RetroArch: set `MODO_TECLADO=global` |
-| Minecraft cursor moves but the camera/click does not | Select the running Minecraft window and use `MODO_MOUSE=jogo`. Keep Minecraft visible and at the same privilege level as ChatPlays. If Minecraft still ignores camera motion, turn **Raw Input** off in Minecraft's mouse settings; Windows synthetic input does not bypass raw-input or elevated-process restrictions. |
-| Bot stopped reopening the game | Crash-loop guard kicked in: the game died instantly 5× in a row. Check the ROM path (`JOGO_ROM`) and whether the emulator opens it manually |
-| Arrows move the character diagonally / wrong | Emulator remapped? Fix with `TECLA_UP` etc. |
-| `Login authentication failed` | Regenerate the OAuth token — it expired or belongs to another account |
-| `API key not valid` (YouTube) | Wrong `YOUTUBE_API_KEY` — create one at console.cloud.google.com with the **YouTube Data API v3** enabled |
-| YouTube says quota exceeded | The free daily quota (10k units) reset at midnight Pacific time — the bot backs off and retries automatically |
-| The live hasn't started yet | The bot keeps retrying YouTube every 60 s until the chat is live |
-| Two bots answering | Another instance is running — close the old window |
-
-## Development (Node.js ≥ 18)
-
-```bash
-npm install     # deps (tmi.js, googleapis, dotenv)
-npm start       # run the bot
-npm run dev     # run with auto-restart on file change
-npm run assistente   # setup wizard in the browser
-npm run setup   # terminal-only .env wizard (legacy)
-npm test        # 292 offline tests (no emulator/chat needed)
-npm run build   # build the .exe + setup.exe locally (requires pkg; NSIS optional)
+```json
+"jump": {"key": "space", "aliases": ["jump", "pular", "pulo"]}
 ```
 
-Works on Windows (PowerShell), Linux (xdotool) and macOS (osascript). GitHub Actions builds `ChatPlays-Setup.exe` (NSIS installer) and the portable zip on every `v*` tag, after tests pass.
+Supported actions:
 
-<details>
-<summary>Project structure</summary>
+- `"key": "x"` or combos such as `"shift+f5"`
+- `"mouse_button": "left"` (`left`, `right`, `middle`)
+- `"mouse_move": [80, 0]` for relative camera movement
+- optional `"duration": 0.2` in seconds
 
-```
-src/
-├── index.js              # entry point / lifecycle
-├── config.js             # .env loading and validation
-├── controles.js          # central chat-control registry (aliases, keys, persistence)
-├── commands.js           # chat message parser (reads the registry)
-├── handlers.js           # central pipeline (cooldown, pause, votes)
-├── messages.js           # chat replies (PT-BR, emoji formatted, dynamic)
-├── presets.js            # emulator key presets (control templates)
-├── overlay.js            # embedded OBS overlay (HTTP, zero deps)
-├── controllers/
-│   ├── keyboard.js       # key injection (worker, PostMessage, combos)
-│   ├── twitch.js         # tmi.js client + send queue
-│   └── youtube.js        # YouTube Data API polling
-├── utils/                # logger, stats, cooldown, pause, votes, update check, game manager
-└── tests/                # 292 tests (node:test)
+Chat examples:
+
+```text
+cima
+pular
+clique
+hold cima 2s
+segurar clique 500ms
+hold w
+soltar
 ```
 
-</details>
+The default file includes emulator arrows/A/B plus WASD, jump, mouse clicks and camera movement. Delete or change commands you do not use.
 
-## Credits & license
+## Run from source
 
-Inspired by the original [Twitch Plays Pokémon](https://www.twitch.tv/twitchplayspokemon). This is a fan project — Pokémon and its trademarks belong to Nintendo/Game Freak/Creatures Inc.
+Requires Python 3.10+ on Windows:
 
-MIT License — see [LICENSE](./LICENSE).
+```powershell
+py -3 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python main.py
+```
+
+Or double-click `run.bat`.
+
+Useful commands:
+
+```powershell
+.venv\Scripts\python main.py --check
+.venv\Scripts\python main.py --version
+python -m unittest discover -s tests -v
+```
+
+## Project layout
+
+```text
+main.py                  entry point
+chatplays/app.py         runtime + queue
+chatplays/commands.py    parser + aliases + HOLD
+chatplays/connections.py Twitch + YouTube readers
+chatplays/input.py       Windows SendInput backend
+chatplays/config.py      defaults + config validation
+tests/                   targeted regression tests
+```
+
+## Scope
+
+v4 deliberately targets the **foreground game on Windows**. That removes a large amount of fragile window targeting, launcher automation, local web UI, bundled drivers, virtual gamepad code and installer maintenance.
+
+If a feature makes the core harder to understand than the feature is worth, it should stay out of the core.
+
+## Credits
+
+ChatPlays is MIT licensed. Parts of the Twitch/YouTube connection approach and DirectInput scan-code mapping are adapted from DougDoug's MIT-licensed TwitchPlays project and prior contributors. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

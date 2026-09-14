@@ -1,0 +1,104 @@
+import copy
+import json
+from pathlib import Path
+from typing import Any
+
+
+class ConfigError(ValueError):
+    pass
+
+
+DEFAULT_CONFIG: dict[str, Any] = {
+    "stream": {
+        "twitch_channel": "",
+        "youtube_channel_id": "",
+        "youtube_stream_url": "",
+    },
+    "countdown_seconds": 5,
+    "queue": {"message_rate": 0.35, "max_length": 20, "workers": 20},
+    "input": {"default_press_seconds": 0.08},
+    "commands": {
+        "up": {"key": "up", "aliases": ["up", "cima"]},
+        "down": {"key": "down", "aliases": ["down", "baixo"]},
+        "left": {"key": "left", "aliases": ["left", "esquerda", "esq"]},
+        "right": {"key": "right", "aliases": ["right", "direita", "dir"]},
+        "a": {"key": "x", "aliases": ["a"]},
+        "b": {"key": "z", "aliases": ["b"]},
+        "start": {"key": "enter", "aliases": ["start", "iniciar"]},
+        "select": {"key": "backspace", "aliases": ["select"]},
+        "forward": {"key": "w", "aliases": ["forward", "frente", "andar frente"]},
+        "backward": {"key": "s", "aliases": ["backward", "tras", "andar tras"]},
+        "strafe_left": {"key": "a", "aliases": ["andar esquerda", "strafe left"]},
+        "strafe_right": {"key": "d", "aliases": ["andar direita", "strafe right"]},
+        "jump": {"key": "space", "aliases": ["jump", "pular", "pulo"]},
+        "click": {"mouse_button": "left", "aliases": ["click", "clique", "atacar"]},
+        "right_click": {
+            "mouse_button": "right",
+            "aliases": ["right click", "clique direito", "usar"],
+        },
+        "look_up": {"mouse_move": [0, -80], "aliases": ["look up", "olhar cima", "mouse cima"]},
+        "look_down": {"mouse_move": [0, 80], "aliases": ["look down", "olhar baixo", "mouse baixo"]},
+        "look_left": {
+            "mouse_move": [-80, 0],
+            "aliases": ["look left", "olhar esquerda", "mouse esquerda"],
+        },
+        "look_right": {
+            "mouse_move": [80, 0],
+            "aliases": ["look right", "olhar direita", "mouse direita"],
+        },
+    },
+}
+
+
+def create_default_config(path: str | Path) -> Path:
+    path = Path(path)
+    path.write_text(
+        json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def load_config(path: str | Path) -> dict[str, Any]:
+    path = Path(path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ConfigError(f"config file not found: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"invalid JSON in {path}: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ConfigError("config root must be an object")
+
+    stream = _section(data, "stream")
+    if not any(str(stream.get(key, "")).strip() for key in (
+        "twitch_channel",
+        "youtube_channel_id",
+        "youtube_stream_url",
+    )):
+        raise ConfigError("set a Twitch channel or YouTube channel/stream URL")
+
+    commands = data.get("commands")
+    if not isinstance(commands, dict) or not commands:
+        raise ConfigError("commands must be a non-empty object")
+
+    _merge_defaults(data, "queue")
+    _merge_defaults(data, "input")
+    data.setdefault("countdown_seconds", DEFAULT_CONFIG["countdown_seconds"])
+    return data
+
+
+def _section(data: dict[str, Any], name: str) -> dict[str, Any]:
+    section = data.get(name)
+    if not isinstance(section, dict):
+        raise ConfigError(f"{name} must be an object")
+    return section
+
+
+def _merge_defaults(data: dict[str, Any], name: str) -> None:
+    section = data.setdefault(name, {})
+    if not isinstance(section, dict):
+        raise ConfigError(f"{name} must be an object")
+    for key, value in copy.deepcopy(DEFAULT_CONFIG[name]).items():
+        section.setdefault(key, value)
