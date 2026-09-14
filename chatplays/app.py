@@ -1,6 +1,6 @@
+import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-import time
 from typing import Any, Protocol
 
 from .commands import CommandRegistry, ParsedAction
@@ -103,7 +103,7 @@ class ChatPlaysApp:
         )
         try:
             self._execute(action)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             print(f"[input] {action.name}: {exc}")
 
     def _execute(self, action: ParsedAction) -> None:

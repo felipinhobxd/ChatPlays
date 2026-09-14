@@ -1,8 +1,8 @@
 import ctypes
-from ctypes import wintypes
 import sys
 import threading
 import time
+from ctypes import wintypes
 
 
 _KEYUP = 0x0002

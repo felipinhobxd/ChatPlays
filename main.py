@@ -1,6 +1,6 @@
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from chatplays import __version__
 from chatplays.app import ChatPlaysApp

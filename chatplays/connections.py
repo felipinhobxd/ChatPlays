@@ -1,10 +1,10 @@
-from concurrent.futures import Future, ThreadPoolExecutor
 import json
 import random
 import re
 import socket
 import ssl
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 
 import requests
@@ -45,19 +45,19 @@ class TwitchConnection:
                 return []
             try:
                 self.connect()
-            except Exception as exc:
+            except OSError as exc:
                 return self._retry(exc, now)
 
         try:
             while True:
                 try:
                     chunk = self.sock.recv(4096)  # type: ignore[union-attr]
-                except socket.timeout:
+                except TimeoutError:
                     break
                 if not chunk:
                     raise ConnectionError("connection closed")
                 self.buffer += chunk.decode(errors="replace")
-        except Exception as exc:
+        except OSError as exc:
             return self._retry(exc, now)
 
         messages = []
@@ -201,7 +201,7 @@ class YouTubeConnection:
                 return []
             try:
                 self.connect()
-            except Exception as exc:
+            except (requests.RequestException, RuntimeError, KeyError, ValueError) as exc:
                 return self._retry(exc, now)
 
         if self.fetch_job is None and now >= self.next_fetch:
@@ -214,7 +214,7 @@ class YouTubeConnection:
         self.next_fetch = now + self.FETCH_INTERVAL
         try:
             return job.result()
-        except Exception as exc:
+        except (requests.RequestException, RuntimeError, KeyError, ValueError) as exc:
             return self._retry(exc, now)
 
     def _retry(self, error: Exception, now: float) -> list[dict[str, str]]:
