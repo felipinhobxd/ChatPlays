@@ -2,13 +2,13 @@
 
 **Twitch/YouTube chat → controls sent only to the game you choose.**
 
-ChatPlays v4 keeps the project intentionally small: native Python desktop UI, Twitch + YouTube chat, customizable commands and direct Windows window targeting.
+ChatPlays v4 keeps the project intentionally small: native Python desktop UI, Twitch + YouTube chat, customizable commands, portable game profiles and direct Windows window targeting.
 
 ## Download — Windows
 
 Download **`ChatPlays.exe`** from the latest GitHub Release and run it. No Python, Node.js, browser, API key or installer is required.
 
-The app saves its portable settings in `config.json` beside the executable.
+The app saves its portable settings in `config.json` beside the executable. Custom game profiles are stored in `profiles.json` in the same folder.
 
 ## 1. Choose the game
 
@@ -35,6 +35,25 @@ ROM:      C:\...\Pokemon emerald pt br\PK EMR (PT-BR).gba
 ```
 
 When you press **Iniciar**, ChatPlays launches the emulator with the ROM and attaches to that emulator window.
+
+## Game profiles
+
+The **Perfis** tab lets each game keep its own:
+
+- target/window or emulator + ROM;
+- commands and aliases;
+- countdown;
+- chat queue rate/length;
+- default press duration.
+
+Twitch and YouTube connection settings are deliberately **not** stored in game profiles, so switching games never replaces your live-chat setup.
+
+Two built-in templates are always available:
+
+- **Minecraft** — movement, jump, clicks and camera commands;
+- **Pokémon / Emulador** — directions, A/B, Start and Select.
+
+Built-in templates do not guess executable or ROM paths. Apply the template, select the real game/emulator on your PC, then save the finished setup as a custom profile. Custom profiles are written atomically to `profiles.json` beside `config.json`.
 
 ## Isolated input
 
@@ -83,9 +102,15 @@ soltar
 
 `hold` / `segurar` can be timed or indefinite. `release` / `soltar` releases every key or mouse button held by ChatPlays.
 
+## Input queue
+
+Chat messages can keep arriving normally, but actual keyboard/mouse actions are executed through one dedicated input queue. This prevents conflicting commands from pressing keys at the same time while preserving chat order.
+
+`release` / `soltar` has emergency priority: it interrupts the current timed press/click, drops older pending inputs and releases held keys/buttons before newer chat commands continue.
+
 ## Advanced settings and log
 
-The **Avançado** tab controls countdown, queue rate, queue length, workers and default press duration. The **Log** tab shows connections, received commands, target information and input errors live.
+The **Avançado** tab controls countdown, chat queue rate, queue length and default press duration. The **Log** tab shows connections, received commands, target information and input errors live.
 
 ## Run from source
 
@@ -111,15 +136,18 @@ python -m unittest discover -s tests -v
 ## Project layout
 
 ```text
-main.py                  entry point
-chatplays/app.py         runtime + queue
-chatplays/commands.py    parser + aliases + HOLD
-chatplays/connections.py Twitch + YouTube readers
-chatplays/target.py      Windows window/process discovery + target resolver
-chatplays/input.py       isolated PostMessage keyboard/mouse backend
-chatplays/config.py      defaults + portable config
-chatplays/ui.py          native Tkinter desktop UI
-tests/                   targeted regression tests
+main.py                       entry point
+chatplays/app.py              runtime + chat queue
+chatplays/commands.py         parser + aliases + HOLD
+chatplays/connections.py      Twitch + YouTube readers
+chatplays/target.py           Windows window/process discovery + target resolver
+chatplays/input.py            isolated PostMessage keyboard/mouse backend
+chatplays/input_dispatcher.py serialized/prioritized game input queue
+chatplays/config.py           defaults + portable config
+chatplays/profiles.py         portable game-profile storage/templates
+chatplays/ui.py               base native Tkinter UI
+chatplays/desktop_ui.py       desktop-specific safe UI + profiles
+tests/                        targeted regression tests
 ```
 
 ## Credits

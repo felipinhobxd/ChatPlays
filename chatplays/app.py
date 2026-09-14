@@ -1,13 +1,13 @@
 import time
 from collections import deque
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from typing import Any, Protocol
 
 from .commands import CommandRegistry, ParsedAction
 from .connections import TwitchConnection, YouTubeConnection
 from .input import GameInput
+from .input_dispatcher import InputDispatcher
 
 Log = Callable[[str], None]
 
@@ -58,7 +58,7 @@ class ChatPlaysApp:
         )
         queue = config["queue"]
         self.queue = MessageQueue(queue["message_rate"], queue["max_length"])
-        self.executor = ThreadPoolExecutor(max_workers=max(1, int(queue["workers"])))
+        self.input_dispatcher = InputDispatcher(self._execute_safely)
         self.connections = self._connections(config["stream"])
 
     def _connections(self, stream: dict[str, Any]) -> list[Connection]:
@@ -90,7 +90,7 @@ class ChatPlaysApp:
         except KeyboardInterrupt:
             self.log("Parando ChatPlays...")
         finally:
-            self._cleanup()
+            self._cleanup(stop_event)
 
     def _countdown(self, stop_event: Event, seconds: int) -> bool:
         self.log(f"Iniciando em {seconds}s. O controle ficará preso à janela selecionada.")
@@ -104,40 +104,56 @@ class ChatPlaysApp:
         while not stop_event.is_set():
             received = 0
             for connection in self.connections:
+                if stop_event.is_set():
+                    break
                 messages = connection.poll()
                 received += len(messages)
                 self.queue.extend(messages)
 
             ready = self.queue.pop_ready()
             for message in ready:
-                self.executor.submit(self._handle_message, message)
+                if stop_event.is_set():
+                    break
+                self._handle_message(message, stop_event)
             if not ready and not received:
                 stop_event.wait(0.01)
 
-    def _cleanup(self) -> None:
+    def _cleanup(self, stop_event: Event) -> None:
+        stop_event.set()
         for connection in self.connections:
             try:
                 connection.close()
             except (OSError, RuntimeError):
                 pass
-        self.executor.shutdown(wait=False, cancel_futures=True)
+
+        # Stop queued/running input before the final release. The dispatcher
+        # cancels timed presses and waits for its single input worker to exit,
+        # so no action can press a key after release_all().
+        self.input_dispatcher.shutdown()
         self.input.release_all()
         self.log("ChatPlays parado; teclas e botões foram soltos.")
 
-    def _handle_message(self, message: dict[str, str]) -> None:
+    def _handle_message(self, message: dict[str, str], stop_event: Event | None = None) -> None:
+        if stop_event and stop_event.is_set():
+            return
         action = self.registry.resolve(message.get("message", ""))
-        if not action:
+        if not action or (stop_event and stop_event.is_set()):
             return
         self.log(
             f"[{message.get('platform', 'chat')}] {message.get('username', 'unknown')}: "
             f"{message.get('message', '')} -> {action.name}"
         )
+        self.input_dispatcher.submit(action)
+
+    def _execute_safely(self, action: ParsedAction, cancel_event: Event) -> None:
         try:
-            self._execute(action)
+            self._execute(action, cancel_event)
         except (OSError, RuntimeError, ValueError) as exc:
             self.log(f"[input] {action.name}: {exc}")
 
-    def _execute(self, action: ParsedAction) -> None:
+    def _execute(self, action: ParsedAction, stop_event: Event | None = None) -> None:
+        if stop_event and stop_event.is_set():
+            return
         if action.release_all:
             self.input.release_all()
             return
@@ -152,7 +168,7 @@ class ChatPlaysApp:
             if action.hold and action.duration is None:
                 self.input.key_down(key)
             else:
-                self.input.press_key(key, duration)
+                self.input.press_key(key, duration, stop_event=stop_event)
             return
 
         if "mouse_button" in spec:
@@ -160,7 +176,7 @@ class ChatPlaysApp:
             if action.hold and action.duration is None:
                 self.input.mouse_down(button)
             else:
-                self.input.click(button, duration)
+                self.input.click(button, duration, stop_event=stop_event)
             return
 
         move = spec.get("mouse_move")

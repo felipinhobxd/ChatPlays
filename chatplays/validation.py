@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from .commands import CommandRegistry
@@ -31,19 +32,16 @@ def validate_runtime_config(config: dict[str, Any]) -> dict[str, Any]:
     countdown = int(config.get("countdown_seconds", 0))
     message_rate = float(queue.get("message_rate", 0))
     max_length = int(queue.get("max_length", 0))
-    workers = int(queue.get("workers", 0))
     default_press = float(input_config.get("default_press_seconds", 0))
 
     if countdown < 0:
         raise ValueError("A contagem antes de iniciar não pode ser negativa.")
-    if message_rate < 0:
-        raise ValueError("A velocidade da fila não pode ser negativa.")
+    if not math.isfinite(message_rate) or message_rate < 0:
+        raise ValueError("A velocidade da fila precisa ser um número finito e não negativo.")
     if max_length < 1:
         raise ValueError("O máximo da fila precisa ser pelo menos 1.")
-    if workers < 1:
-        raise ValueError("Workers precisa ser pelo menos 1.")
-    if default_press <= 0:
-        raise ValueError("A duração padrão da tecla precisa ser maior que zero.")
+    if not math.isfinite(default_press) or default_press <= 0:
+        raise ValueError("A duração padrão da tecla precisa ser um número finito maior que zero.")
 
     commands = config.get("commands")
     if not isinstance(commands, dict) or not commands:

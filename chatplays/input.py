@@ -1,7 +1,6 @@
 import ctypes
 import sys
 import threading
-import time
 from collections.abc import Callable
 from ctypes import wintypes
 from typing import Any
@@ -185,10 +184,24 @@ class GameInput:
                 else:
                     self._held_keys[key] = count - 1
 
-    def press_key(self, combo: str, seconds: float) -> None:
+    @staticmethod
+    def _wait(seconds: float, stop_event: threading.Event | None = None) -> None:
+        duration = max(0.0, float(seconds))
+        if stop_event is None:
+            threading.Event().wait(duration)
+        else:
+            stop_event.wait(duration)
+
+    def press_key(
+        self,
+        combo: str,
+        seconds: float,
+        *,
+        stop_event: threading.Event | None = None,
+    ) -> None:
         self.key_down(combo)
         try:
-            time.sleep(seconds)
+            self._wait(seconds, stop_event)
         finally:
             self.key_up(combo)
 
@@ -221,10 +234,16 @@ class GameInput:
             else:
                 self._held_mouse[button] = count - 1
 
-    def click(self, button: str, seconds: float = 0.05) -> None:
+    def click(
+        self,
+        button: str,
+        seconds: float = 0.05,
+        *,
+        stop_event: threading.Event | None = None,
+    ) -> None:
         self.mouse_down(button)
         try:
-            time.sleep(seconds)
+            self._wait(seconds, stop_event)
         finally:
             self.mouse_up(button)
 
