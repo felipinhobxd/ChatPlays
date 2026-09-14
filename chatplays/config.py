@@ -51,15 +51,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 
 def create_default_config(path: str | Path) -> Path:
+    return save_config(path, copy.deepcopy(DEFAULT_CONFIG))
+
+
+def save_config(path: str | Path, data: dict[str, Any]) -> Path:
     path = Path(path)
-    path.write_text(
-        json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
 
 
-def load_config(path: str | Path) -> dict[str, Any]:
+def read_config(path: str | Path) -> dict[str, Any]:
     path = Path(path)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -71,21 +73,26 @@ def load_config(path: str | Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ConfigError("config root must be an object")
 
+    for section in ("stream", "queue", "input"):
+        _merge_defaults(data, section)
+    data.setdefault("countdown_seconds", DEFAULT_CONFIG["countdown_seconds"])
+    if not isinstance(data.get("commands"), dict):
+        data["commands"] = copy.deepcopy(DEFAULT_CONFIG["commands"])
+    return data
+
+
+def load_config(path: str | Path) -> dict[str, Any]:
+    data = read_config(path)
     stream = _section(data, "stream")
-    if not any(str(stream.get(key, "")).strip() for key in (
-        "twitch_channel",
-        "youtube_channel_id",
-        "youtube_stream_url",
-    )):
+    if not any(
+        str(stream.get(key, "")).strip()
+        for key in ("twitch_channel", "youtube_channel_id", "youtube_stream_url")
+    ):
         raise ConfigError("set a Twitch channel or YouTube channel/stream URL")
 
     commands = data.get("commands")
     if not isinstance(commands, dict) or not commands:
         raise ConfigError("commands must be a non-empty object")
-
-    _merge_defaults(data, "queue")
-    _merge_defaults(data, "input")
-    data.setdefault("countdown_seconds", DEFAULT_CONFIG["countdown_seconds"])
     return data
 
 
@@ -99,6 +106,7 @@ def _section(data: dict[str, Any], name: str) -> dict[str, Any]:
 def _merge_defaults(data: dict[str, Any], name: str) -> None:
     section = data.setdefault(name, {})
     if not isinstance(section, dict):
-        raise ConfigError(f"{name} must be an object")
+        section = {}
+        data[name] = section
     for key, value in copy.deepcopy(DEFAULT_CONFIG[name]).items():
         section.setdefault(key, value)

@@ -34,8 +34,9 @@ jobs:
           ruff check .
           python -m compileall -q main.py chatplays tests
           python -m unittest discover -s tests -v
+          python -c "import tkinter; import chatplays.ui"
       - name: Build
-        run: pyinstaller --clean --onefile --name ChatPlays main.py
+        run: pyinstaller --clean --onefile --windowed --name ChatPlays main.py
 
       - name: Package
         shell: pwsh

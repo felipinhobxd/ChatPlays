@@ -1,14 +1,13 @@
-# ChatPlays v4.0.0
+# ChatPlays v4.0.1
 
-A major cleanup focused on the original Twitch Plays idea: chat messages in, real game input out.
+This update fixes the v4.0.0 first-run experience and makes ChatPlays a real desktop app.
 
-- Rewritten from Node.js to a compact Python core.
-- Standalone Windows `ChatPlays.exe` — Python is not required for the release build.
-- Twitch and YouTube can run together with non-blocking reconnects.
-- Direct Windows `SendInput` keyboard and relative mouse input.
-- PT-BR + English aliases, timed/indefinite HOLD, and safe global release.
-- One `config.json`; the executable creates it automatically on first launch.
-- Removed the old web wizard, dashboard, installer framework, profiles, bundled drivers, gamepad stack and other high-complexity layers.
-- CI now lints, compiles, tests, and builds the Windows executable before release.
-
-This rewrite is inspired in part by DougDoug's MIT-licensed TwitchPlays project. Attribution is preserved in `THIRD_PARTY_NOTICES.md`.
+- `ChatPlays.exe` now opens a native Windows configuration UI instead of creating a JSON file and closing.
+- Configure Twitch channel, YouTube channel/live URL, commands, keys, mouse actions, aliases, durations and queue settings without editing files.
+- Add, edit, remove and restore commands from the Commands tab.
+- Start and stop ChatPlays directly from the UI.
+- Live log shows connection status, chat commands and input errors.
+- Stop/exit safely releases held keys and mouse buttons.
+- `config.json` is still saved beside the executable for portability.
+- `--headless` remains available when running from a console.
+- Windows builds now use PyInstaller windowed mode, so the release behaves like a desktop application.
