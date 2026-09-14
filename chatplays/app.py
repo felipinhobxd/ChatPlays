@@ -1,8 +1,9 @@
 import time
 from collections import deque
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from .commands import CommandRegistry, ParsedAction
 from .connections import TwitchConnection, YouTubeConnection
