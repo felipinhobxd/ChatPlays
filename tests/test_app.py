@@ -1,5 +1,6 @@
 import unittest
 from threading import Event
+from unittest.mock import ANY
 
 from chatplays.app import ChatPlaysApp
 from chatplays.commands import ParsedAction
@@ -72,7 +73,7 @@ class AppTests(unittest.TestCase):
         )
         self.assertTrue(self.app.input_dispatcher.wait_idle())
         self.assertIn(
-            ("press_key", ("up", 0.08), {"stop_event": unittest.mock.ANY}),
+            ("press_key", ("up", 0.08), {"stop_event": ANY}),
             self.input.calls,
         )
 
