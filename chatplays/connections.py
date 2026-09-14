@@ -5,9 +5,11 @@ import socket
 import ssl
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any
+from typing import Any, Callable
 
 import requests
+
+Log = Callable[[str], None]
 
 
 class TwitchConnection:
@@ -15,11 +17,12 @@ class TwitchConnection:
 
     _privmsg = re.compile(r"^:([^!]+)!.* PRIVMSG #[^ ]+ :(.*)$")
 
-    def __init__(self, channel: str) -> None:
+    def __init__(self, channel: str, logger: Log = print) -> None:
         self.channel = channel.strip().lower().lstrip("#")
         self.sock: ssl.SSLSocket | None = None
         self.buffer = ""
         self.retry_at = 0.0
+        self.log = logger
 
     def connect(self) -> None:
         self.close()
@@ -32,7 +35,7 @@ class TwitchConnection:
         nick = f"justinfan{random.randint(10000, 99999)}"
         for line in ("PASS SCHMOOPIIE", f"NICK {nick}", f"JOIN #{self.channel}"):
             self._send(line)
-        print(f"[Twitch] connected to #{self.channel}")
+        self.log(f"[Twitch] conectado a #{self.channel}")
 
     def _send(self, line: str) -> None:
         if self.sock:
@@ -76,7 +79,7 @@ class TwitchConnection:
         return messages
 
     def _retry(self, error: Exception, now: float) -> list[dict[str, str]]:
-        print(f"[Twitch] {error}; retrying in 2s")
+        self.log(f"[Twitch] {error}; tentando novamente em 2s")
         self.close()
         self.retry_at = now + 2
         return []
@@ -100,7 +103,9 @@ class YouTubeConnection:
     )
     _config_re = re.compile(r"(?:ytcfg\s*\.set)\s*\(({.+?})\)\s*;", re.DOTALL)
 
-    def __init__(self, channel_id: str = "", stream_url: str = "") -> None:
+    def __init__(
+        self, channel_id: str = "", stream_url: str = "", logger: Log = print
+    ) -> None:
         self.channel_id = channel_id.strip()
         self.stream_url = stream_url.strip()
         self.session: requests.Session | None = None
@@ -110,6 +115,7 @@ class YouTubeConnection:
         self.fetch_job: Future[list[dict[str, str]]] | None = None
         self.next_fetch = 0.0
         self.retry_at = 0.0
+        self.log = logger
 
     @staticmethod
     def _continuation(data: dict[str, Any]) -> str:
@@ -163,7 +169,7 @@ class YouTubeConnection:
             "webClientInfo": {"isDocumentHidden": False},
         }
         self.next_fetch = 0.0
-        print("[YouTube] connected")
+        self.log("[YouTube] conectado")
 
     def _fetch(self) -> list[dict[str, str]]:
         if not self.session:
@@ -218,7 +224,7 @@ class YouTubeConnection:
             return self._retry(exc, now)
 
     def _retry(self, error: Exception, now: float) -> list[dict[str, str]]:
-        print(f"[YouTube] {error}; retrying in 5s")
+        self.log(f"[YouTube] {error}; tentando novamente em 5s")
         self._close_session()
         self.retry_at = now + 5
         return []
