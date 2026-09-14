@@ -74,42 +74,55 @@ class ChatPlaysApp:
 
     def run(self, stop_event: Event | None = None) -> None:
         stop_event = stop_event or Event()
-        prepare = getattr(self.input, "prepare", None)
-        if callable(prepare):
-            prepare()
-        if stop_event.is_set():
-            return
-
-        countdown = max(0, int(self.config.get("countdown_seconds", 5)))
-        if countdown:
-            self.log(f"Iniciando em {countdown}s. O controle ficará preso à janela selecionada.")
-            for remaining in range(countdown, 0, -1):
-                self.log(str(remaining))
-                if stop_event.wait(1):
-                    return
-
-        self.log("ChatPlays iniciado com controle isolado na janela alvo.")
         try:
-            while not stop_event.is_set():
-                received = 0
-                for connection in self.connections:
-                    messages = connection.poll()
-                    received += len(messages)
-                    self.queue.extend(messages)
+            prepare = getattr(self.input, "prepare", None)
+            if callable(prepare):
+                prepare()
+            if stop_event.is_set():
+                return
 
-                ready = self.queue.pop_ready()
-                for message in ready:
-                    self.executor.submit(self._handle_message, message)
-                if not ready and not received:
-                    stop_event.wait(0.01)
+            countdown = max(0, int(self.config.get("countdown_seconds", 5)))
+            if countdown and not self._countdown(stop_event, countdown):
+                return
+
+            self.log("ChatPlays iniciado com controle isolado na janela alvo.")
+            self._run_loop(stop_event)
         except KeyboardInterrupt:
             self.log("Parando ChatPlays...")
         finally:
-            self.input.release_all()
+            self._cleanup()
+
+    def _countdown(self, stop_event: Event, seconds: int) -> bool:
+        self.log(f"Iniciando em {seconds}s. O controle ficará preso à janela selecionada.")
+        for remaining in range(seconds, 0, -1):
+            self.log(str(remaining))
+            if stop_event.wait(1):
+                return False
+        return True
+
+    def _run_loop(self, stop_event: Event) -> None:
+        while not stop_event.is_set():
+            received = 0
             for connection in self.connections:
+                messages = connection.poll()
+                received += len(messages)
+                self.queue.extend(messages)
+
+            ready = self.queue.pop_ready()
+            for message in ready:
+                self.executor.submit(self._handle_message, message)
+            if not ready and not received:
+                stop_event.wait(0.01)
+
+    def _cleanup(self) -> None:
+        for connection in self.connections:
+            try:
                 connection.close()
-            self.executor.shutdown(wait=False, cancel_futures=True)
-            self.log("ChatPlays parado; teclas e botões foram soltos.")
+            except (OSError, RuntimeError):
+                pass
+        self.executor.shutdown(wait=False, cancel_futures=True)
+        self.input.release_all()
+        self.log("ChatPlays parado; teclas e botões foram soltos.")
 
     def _handle_message(self, message: dict[str, str]) -> None:
         action = self.registry.resolve(message.get("message", ""))

@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .validation import validate_runtime_config
+
 
 class ConfigError(ValueError):
     pass
@@ -64,9 +66,19 @@ def create_default_config(path: str | Path) -> Path:
 
 
 def save_config(path: str | Path, data: dict[str, Any]) -> Path:
+    """Write config atomically so an interrupted save cannot corrupt config.json."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary = path.with_name(f".{path.name}.tmp")
+    payload = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    try:
+        temporary.write_text(payload, encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
     return path
 
 
@@ -91,8 +103,9 @@ def read_config(path: str | Path) -> dict[str, Any]:
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
+    """Load a usable editor config while preserving the pre-v4.1.1 contract."""
     data = read_config(path)
-    stream = _section(data, "stream")
+    stream = data["stream"]
     if not any(
         str(stream.get(key, "")).strip()
         for key in ("twitch_channel", "youtube_channel_id", "youtube_stream_url")
@@ -105,11 +118,9 @@ def load_config(path: str | Path) -> dict[str, Any]:
     return data
 
 
-def _section(data: dict[str, Any], name: str) -> dict[str, Any]:
-    section = data.get(name)
-    if not isinstance(section, dict):
-        raise ConfigError(f"{name} must be an object")
-    return section
+def load_runtime_config(path: str | Path) -> dict[str, Any]:
+    """Load and fully validate settings before starting the runtime."""
+    return validate_runtime_config(load_config(path))
 
 
 def _merge_defaults(data: dict[str, Any], name: str) -> None:

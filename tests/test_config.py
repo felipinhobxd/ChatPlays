@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from chatplays.config import ConfigError, create_default_config, load_config
+from chatplays.config import ConfigError, create_default_config, load_config, save_config
 
 
 class ConfigTests(unittest.TestCase):
@@ -31,6 +31,14 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config["queue"]["max_length"], 20)
             self.assertEqual(config["input"]["default_press_seconds"], 0.08)
             self.assertEqual(config["target"]["mode"], "program")
+
+    def test_save_config_leaves_no_temporary_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            data = {"hello": "world"}
+            save_config(path, data)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), data)
+            self.assertFalse((Path(tmp) / ".config.json.tmp").exists())
 
     def test_requires_stream(self):
         with tempfile.TemporaryDirectory() as tmp:

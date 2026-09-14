@@ -35,6 +35,15 @@ class TargetTests(unittest.TestCase):
         }
         self.assertEqual(best_window([wrong_pid, correct], target), correct)
 
+    def test_wrong_executable_is_not_accepted_by_title_only(self):
+        wrong = WindowInfo(10, 777, "Pokemon Emerald", "obs64.exe", r"C:\OBS\obs64.exe")
+        target = {
+            "title": "Pokemon Emerald",
+            "process": "visualboyadvance-m.exe",
+            "exe": r"C:\Emu\visualboyadvance-m.exe",
+        }
+        self.assertIsNone(best_window([wrong], target))
+
     def test_title_fallback_selects_java_window(self):
         launcher = WindowInfo(10, 100, "Launcher", "javaw.exe", r"C:\Java\javaw.exe")
         minecraft = WindowInfo(

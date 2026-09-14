@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+_TARGET_MODES = {"program", "emulator"}
+
 if sys.platform == "win32":
     from ctypes import wintypes
 
@@ -70,6 +72,14 @@ def process_name(path: str) -> str:
     return Path(path).name if path else ""
 
 
+def _window_pid(hwnd: int) -> int:
+    if sys.platform != "win32" or not hwnd:
+        return 0
+    pid = wintypes.DWORD()
+    _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    return int(pid.value)
+
+
 def _query_process_path(pid: int) -> str:
     if sys.platform != "win32" or pid <= 0:
         return ""
@@ -106,15 +116,14 @@ def list_open_windows() -> list[WindowInfo]:
         if not title:
             return True
 
-        pid = wintypes.DWORD()
-        _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        if not pid.value or pid.value == os.getpid():
+        pid = _window_pid(int(hwnd))
+        if not pid or pid == os.getpid():
             return True
-        exe = _query_process_path(int(pid.value))
+        exe = _query_process_path(pid)
         results.append(
             WindowInfo(
                 hwnd=int(hwnd),
-                pid=int(pid.value),
+                pid=pid,
                 title=title,
                 process=process_name(exe),
                 exe=exe,
@@ -137,20 +146,24 @@ def _same_path(left: str, right: str) -> bool:
 
 
 def target_score(window: WindowInfo, target: dict[str, Any], preferred_pid: int = 0) -> int:
-    score = 0
+    """Score a candidate, rejecting explicit identity mismatches before title fallback."""
     pid = int(target.get("pid") or 0)
     exe = normalize_path(target.get("exe"))
     title = str(target.get("title") or "").strip().lower()
     process = str(target.get("process") or "").strip().lower()
 
-    path_matches = bool(exe and _same_path(window.exe, exe))
-    process_matches = bool(process and window.process.lower() == process)
-    identity_compatible = not exe or not window.exe or path_matches
-    identity_compatible = identity_compatible and (not process or process_matches)
+    path_matches = bool(exe and window.exe and _same_path(window.exe, exe))
+    process_matches = bool(process and window.process and window.process.lower() == process)
 
-    if preferred_pid and window.pid == preferred_pid and identity_compatible:
+    if exe and window.exe and not path_matches:
+        return 0
+    if process and window.process and not process_matches:
+        return 0
+
+    score = 0
+    if preferred_pid and window.pid == preferred_pid:
         score += 100
-    if pid and window.pid == pid and identity_compatible:
+    if pid and window.pid == pid:
         score += 80
     if path_matches:
         score += 50
@@ -168,12 +181,13 @@ def target_score(window: WindowInfo, target: dict[str, Any], preferred_pid: int 
 def best_window(
     windows: list[WindowInfo], target: dict[str, Any], preferred_pid: int = 0
 ) -> WindowInfo | None:
-    ranked = [(target_score(window, target, preferred_pid), window) for window in windows]
-    ranked = [(score, window) for score, window in ranked if score > 0]
-    if not ranked:
-        return None
-    ranked.sort(key=lambda pair: pair[0], reverse=True)
-    return ranked[0][1]
+    best: WindowInfo | None = None
+    best_score = 0
+    for window in windows:
+        score = target_score(window, target, preferred_pid)
+        if score > best_score:
+            best, best_score = window, score
+    return best
 
 
 class TargetResolver:
@@ -188,16 +202,15 @@ class TargetResolver:
         self._launched: subprocess.Popen[bytes] | None = None
 
     def validate(self) -> None:
-        if self.mode not in {"program", "emulator"}:
+        if self.mode not in _TARGET_MODES:
             raise ValueError("Modo de alvo inválido. Escolha Programa aberto ou Emulador + ROM.")
         if self.mode == "program":
-            if not any(
-                (
-                    int(self.config.get("pid") or 0),
-                    normalize_path(self.config.get("exe")),
-                    str(self.config.get("title") or "").strip(),
-                )
-            ):
+            has_identity = bool(
+                int(self.config.get("pid") or 0)
+                or normalize_path(self.config.get("exe"))
+                or str(self.config.get("title") or "").strip()
+            )
+            if not has_identity:
                 raise ValueError("Selecione um programa/jogo aberto antes de iniciar.")
             return
 
@@ -229,14 +242,10 @@ class TargetResolver:
         raise RuntimeError("A janela selecionada não foi encontrada/aberta.")
 
     def resolve(self) -> WindowInfo | None:
-        if self._cached and self._is_window(self._cached.hwnd):
+        if self._cached and self._cache_is_valid(self._cached):
             return self._cached
-        windows = list_open_windows()
-        target = dict(self.config)
-        if self.mode == "emulator":
-            target["exe"] = normalize_path(self.config.get("emulator_exe"))
-            target["process"] = Path(target["exe"]).name if target["exe"] else ""
-        self._cached = best_window(windows, target, self._preferred_pid)
+
+        self._cached = best_window(list_open_windows(), self._target_identity(), self._preferred_pid)
         return self._cached
 
     def hwnd(self) -> int:
@@ -245,6 +254,15 @@ class TargetResolver:
             raise RuntimeError("A janela alvo não está aberta. Nenhuma tecla foi enviada ao PC.")
         return found.hwnd
 
+    def _target_identity(self) -> dict[str, Any]:
+        target = dict(self.config)
+        if self.mode == "emulator":
+            target["exe"] = normalize_path(self.config.get("emulator_exe"))
+            target["process"] = Path(target["exe"]).name if target["exe"] else ""
+        return target
+
     @staticmethod
-    def _is_window(hwnd: int) -> bool:
-        return bool(sys.platform == "win32" and hwnd and _user32.IsWindow(hwnd))
+    def _cache_is_valid(window: WindowInfo) -> bool:
+        if sys.platform != "win32" or not window.hwnd or not _user32.IsWindow(window.hwnd):
+            return False
+        return _window_pid(window.hwnd) == window.pid

@@ -102,7 +102,7 @@ class GameInput:
 
     @staticmethod
     def _combo_keys(combo: str) -> list[str]:
-        keys = []
+        keys: list[str] = []
         for raw in combo.lower().replace(" ", "").split("+"):
             key = _KEY_ALIASES.get(raw, raw)
             if key not in _KEY_CODES:
@@ -149,12 +149,30 @@ class GameInput:
         return self._mouse_x, self._mouse_y
 
     def key_down(self, combo: str) -> None:
+        keys = self._combo_keys(combo)
         with self._lock:
-            for key in self._combo_keys(combo):
-                count = self._held_keys.get(key, 0)
-                if not count:
-                    self._send_key(key, False)
-                self._held_keys[key] = count + 1
+            applied: list[tuple[str, int]] = []
+            try:
+                for key in keys:
+                    previous = self._held_keys.get(key, 0)
+                    if previous == 0:
+                        self._send_key(key, False)
+                    self._held_keys[key] = previous + 1
+                    applied.append((key, previous))
+            except (OSError, RuntimeError):
+                self._rollback_key_down(applied)
+                raise
+
+    def _rollback_key_down(self, applied: list[tuple[str, int]]) -> None:
+        for key, previous in reversed(applied):
+            if previous == 0:
+                try:
+                    self._send_key(key, True)
+                except (OSError, RuntimeError):
+                    pass
+                self._held_keys.pop(key, None)
+            else:
+                self._held_keys[key] = previous
 
     def key_up(self, combo: str) -> None:
         with self._lock:
