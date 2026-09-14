@@ -3,7 +3,6 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
-
 _DURATION_RE = re.compile(r"^(\d+(?:[.,]\d+)?)(ms|s)?$", re.IGNORECASE)
 _RELEASE = {"release", "release all", "soltar", "soltar tudo"}
 _HOLD_PREFIXES = ("hold ", "segurar ")

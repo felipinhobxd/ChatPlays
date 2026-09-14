@@ -2,7 +2,6 @@ import unittest
 
 from chatplays.commands import CommandRegistry, normalize, parse_duration
 
-
 COMMANDS = {
     "up": {"key": "up", "aliases": ["up", "cima"]},
     "click": {"mouse_button": "left", "aliases": ["click", "clique"]},

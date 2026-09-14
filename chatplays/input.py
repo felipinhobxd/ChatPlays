@@ -4,7 +4,6 @@ import threading
 import time
 from ctypes import wintypes
 
-
 _KEYUP = 0x0002
 _SCANCODE = 0x0008
 _EXTENDED = 0x0001
