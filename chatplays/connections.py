@@ -1,3 +1,4 @@
+import codecs
 import json
 import random
 import re
@@ -22,6 +23,7 @@ class TwitchConnection:
         self.channel = channel.strip().lower().lstrip("#")
         self.sock: ssl.SSLSocket | None = None
         self.buffer = ""
+        self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         self.retry_at = 0.0
         self.log = logger
 
@@ -33,6 +35,7 @@ class TwitchConnection:
         )
         self.sock.settimeout(0.02)
         self.buffer = ""
+        self.decoder.reset()
         nick = f"justinfan{random.randint(10000, 99999)}"
         for line in ("PASS SCHMOOPIIE", f"NICK {nick}", f"JOIN #{self.channel}"):
             self._send(line)
@@ -60,7 +63,7 @@ class TwitchConnection:
                     break
                 if not chunk:
                     raise ConnectionError("connection closed")
-                self.buffer += chunk.decode(errors="replace")
+                self.buffer += self.decoder.decode(chunk, final=False)
         except OSError as exc:
             return self._retry(exc, now)
 
@@ -92,6 +95,7 @@ class TwitchConnection:
             except OSError:
                 pass
         self.sock = None
+        self.decoder.reset()
 
 
 class YouTubeConnection:
