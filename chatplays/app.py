@@ -1,11 +1,14 @@
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Protocol
+from threading import Event
+from typing import Any, Callable, Protocol
 
 from .commands import CommandRegistry, ParsedAction
 from .connections import TwitchConnection, YouTubeConnection
 from .input import GameInput
+
+Log = Callable[[str], None]
 
 
 class Connection(Protocol):
@@ -40,8 +43,14 @@ class MessageQueue:
 
 
 class ChatPlaysApp:
-    def __init__(self, config: dict[str, Any], input_backend: GameInput | None = None) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        input_backend: GameInput | None = None,
+        logger: Log = print,
+    ) -> None:
         self.config = config
+        self.log = logger
         self.input = input_backend or GameInput()
         self.registry = CommandRegistry(
             config["commands"], config["input"]["default_press_seconds"]
@@ -51,29 +60,30 @@ class ChatPlaysApp:
         self.executor = ThreadPoolExecutor(max_workers=max(1, int(queue["workers"])))
         self.connections = self._connections(config["stream"])
 
-    @staticmethod
-    def _connections(stream: dict[str, Any]) -> list[Connection]:
+    def _connections(self, stream: dict[str, Any]) -> list[Connection]:
         connections: list[Connection] = []
         twitch = str(stream.get("twitch_channel", "")).strip()
         youtube_id = str(stream.get("youtube_channel_id", "")).strip()
         youtube_url = str(stream.get("youtube_stream_url", "")).strip()
         if twitch:
-            connections.append(TwitchConnection(twitch))
+            connections.append(TwitchConnection(twitch, logger=self.log))
         if youtube_id or youtube_url:
-            connections.append(YouTubeConnection(youtube_id, youtube_url))
+            connections.append(YouTubeConnection(youtube_id, youtube_url, logger=self.log))
         return connections
 
-    def run(self) -> None:
+    def run(self, stop_event: Event | None = None) -> None:
+        stop_event = stop_event or Event()
         countdown = max(0, int(self.config.get("countdown_seconds", 5)))
         if countdown:
-            print(f"ChatPlays starts in {countdown}s. Focus the game window.")
+            self.log(f"Iniciando em {countdown}s. Coloque o jogo em foco.")
             for remaining in range(countdown, 0, -1):
-                print(remaining)
-                time.sleep(1)
+                self.log(str(remaining))
+                if stop_event.wait(1):
+                    return
 
-        print("ChatPlays running. Ctrl+C stops and releases every held input.")
+        self.log("ChatPlays iniciado.")
         try:
-            while True:
+            while not stop_event.is_set():
                 received = 0
                 for connection in self.connections:
                     messages = connection.poll()
@@ -84,27 +94,28 @@ class ChatPlaysApp:
                 for message in ready:
                     self.executor.submit(self._handle_message, message)
                 if not ready and not received:
-                    time.sleep(0.01)
+                    stop_event.wait(0.01)
         except KeyboardInterrupt:
-            print("\nStopping ChatPlays...")
+            self.log("Parando ChatPlays...")
         finally:
             self.input.release_all()
             for connection in self.connections:
                 connection.close()
             self.executor.shutdown(wait=False, cancel_futures=True)
+            self.log("ChatPlays parado; teclas e botões foram soltos.")
 
     def _handle_message(self, message: dict[str, str]) -> None:
         action = self.registry.resolve(message.get("message", ""))
         if not action:
             return
-        print(
+        self.log(
             f"[{message.get('platform', 'chat')}] {message.get('username', 'unknown')}: "
             f"{message.get('message', '')} -> {action.name}"
         )
         try:
             self._execute(action)
         except (OSError, RuntimeError, ValueError) as exc:
-            print(f"[input] {action.name}: {exc}")
+            self.log(f"[input] {action.name}: {exc}")
 
     def _execute(self, action: ParsedAction) -> None:
         if action.release_all:
