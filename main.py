@@ -5,7 +5,7 @@ from pathlib import Path
 from chatplays import __version__
 from chatplays.app import ChatPlaysApp
 from chatplays.config import ConfigError, create_default_config, load_runtime_config
-from chatplays.ui import run_ui
+from chatplays.ui import ChatPlaysUI
 
 
 def default_config_path() -> Path:
@@ -43,12 +43,24 @@ def _run_headless(config_path: Path, check_only: bool) -> int:
     return 0
 
 
+def _run_ui(config_path: Path, ui_factory=ChatPlaysUI) -> None:
+    """Run the desktop UI and never let the process exit before runtime cleanup."""
+    ui = ui_factory(config_path)
+    try:
+        ui.run()
+    finally:
+        if ui.stop_event:
+            ui.stop_event.set()
+        if ui.worker and ui.worker.is_alive():
+            ui.worker.join()
+
+
 def main() -> int:
     args = parse_args()
     config_path = Path(args.config) if args.config else default_config_path()
     if args.headless or args.check:
         return _run_headless(config_path, args.check)
-    run_ui(config_path)
+    _run_ui(config_path)
     return 0
 
 
