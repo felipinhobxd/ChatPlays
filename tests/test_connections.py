@@ -37,6 +37,19 @@ class ConnectionTests(unittest.TestCase):
         )
         connection.close()
 
+    def test_twitch_split_utf8_sequence_is_preserved(self):
+        connection = TwitchConnection("example")
+        prefix = b":viewer!viewer@viewer.tmi.twitch.tv PRIVMSG #example :olhar "
+        suffix = "cima 😀\r\n".encode("utf-8")
+        split_at = suffix.index(b"\xf0") + 2
+        connection.sock = FakeSocket([prefix + suffix[:split_at], suffix[split_at:]])
+
+        messages = connection.poll()
+
+        self.assertEqual(messages[0]["message"], "olhar cima 😀")
+        self.assertNotIn("�", messages[0]["message"])
+        connection.close()
+
     def test_twitch_ping_is_answered(self):
         connection = TwitchConnection("example")
         sock = FakeSocket([b"PING :tmi.twitch.tv\r\n"])
