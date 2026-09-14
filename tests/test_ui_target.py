@@ -55,6 +55,19 @@ class UITargetDataTests(unittest.TestCase):
         )
         self.assertIsNone(selected)
 
+    def test_single_matching_restarted_instance_can_be_reused(self):
+        restarted = window(300, 30)
+        selected = choose_target_window(
+            [restarted],
+            {
+                "pid": 999,
+                "title": "Minecraft",
+                "process": "javaw.exe",
+                "exe": r"C:\Java\javaw.exe",
+            },
+        )
+        self.assertEqual(selected, restarted)
+
 
 if __name__ == "__main__":
     unittest.main()
