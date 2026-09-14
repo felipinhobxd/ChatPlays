@@ -6,6 +6,7 @@ from chatplays import __version__
 from chatplays.app import ChatPlaysApp
 from chatplays.commands import CommandRegistry
 from chatplays.config import ConfigError, create_default_config, load_config
+from chatplays.target import TargetResolver
 from chatplays.ui import run_ui
 
 
@@ -31,7 +32,8 @@ def _run_headless(config_path: Path, check_only: bool) -> int:
     try:
         config = load_config(config_path)
         CommandRegistry(config["commands"], config["input"]["default_press_seconds"])
-    except (ConfigError, ValueError) as exc:
+        TargetResolver(config["target"]).validate()
+    except (ConfigError, OSError, ValueError) as exc:
         print(f"Config error: {exc}", file=sys.stderr)
         return 2
     if check_only:
@@ -39,7 +41,7 @@ def _run_headless(config_path: Path, check_only: bool) -> int:
         return 0
     try:
         ChatPlaysApp(config).run()
-    except RuntimeError as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         print(f"Startup error: {exc}", file=sys.stderr)
         return 1
     return 0

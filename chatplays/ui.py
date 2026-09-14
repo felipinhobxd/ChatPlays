@@ -3,13 +3,14 @@ import queue
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 from typing import Any
 
 from . import __version__
 from .app import ChatPlaysApp
 from .commands import CommandRegistry
 from .config import DEFAULT_CONFIG, ConfigError, load_config, read_config, save_config
+from .target import TargetResolver, WindowInfo, list_open_windows, normalize_path
 
 _ACTION_TYPES = ("key", "mouse_button", "mouse_move")
 
@@ -49,14 +50,16 @@ class ChatPlaysUI:
         self.config_path = config_path
         self.root = tk.Tk()
         self.root.title(f"ChatPlays {__version__}")
-        self.root.minsize(900, 650)
-        self.root.geometry("1000x720")
+        self.root.minsize(940, 680)
+        self.root.geometry("1060x760")
 
         self.log_queue: queue.Queue[str] = queue.Queue()
         self.worker: threading.Thread | None = None
         self.stop_event: threading.Event | None = None
         self.commands: dict[str, dict[str, Any]] = {}
         self.selected_command: str | None = None
+        self.open_windows: dict[str, WindowInfo] = {}
+        self.selected_window: WindowInfo | None = None
 
         self._load_config()
         self._build_ui()
@@ -64,6 +67,7 @@ class ChatPlaysUI:
         self._set_status("Parado", running=False)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._drain_log_queue)
+        self.root.after(150, self._refresh_targets)
 
     def _load_config(self) -> None:
         if not self.config_path.exists():
@@ -90,29 +94,153 @@ class ChatPlaysUI:
         )
         ttk.Label(
             header,
-            text="Configure o chat e os controles, depois clique em Iniciar.",
+            text="Escolha o jogo, configure o chat e os controles, depois clique em Iniciar.",
         ).grid(row=1, column=0, sticky="w", pady=(2, 0))
         self.status_var = tk.StringVar()
-        self.status_label = ttk.Label(header, textvariable=self.status_var)
-        self.status_label.grid(row=0, column=1, rowspan=2, sticky="e")
+        ttk.Label(header, textvariable=self.status_var).grid(
+            row=0, column=1, rowspan=2, sticky="e"
+        )
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 10))
 
+        self.target_tab = ttk.Frame(self.notebook, padding=14)
         self.connections_tab = ttk.Frame(self.notebook, padding=16)
         self.commands_tab = ttk.Frame(self.notebook, padding=12)
         self.advanced_tab = ttk.Frame(self.notebook, padding=16)
         self.log_tab = ttk.Frame(self.notebook, padding=12)
+        self.notebook.add(self.target_tab, text="Jogo / Alvo")
         self.notebook.add(self.connections_tab, text="Conexões")
         self.notebook.add(self.commands_tab, text="Comandos")
         self.notebook.add(self.advanced_tab, text="Avançado")
         self.notebook.add(self.log_tab, text="Log")
 
+        self._build_target_tab()
         self._build_connections_tab()
         self._build_commands_tab()
         self._build_advanced_tab()
         self._build_log_tab()
         self._build_footer()
+
+    def _build_target_tab(self) -> None:
+        tab = self.target_tab
+        tab.columnconfigure(0, weight=1)
+        tab.rowconfigure(3, weight=1)
+        target = self.config.get("target", {})
+
+        ttk.Label(tab, text="Onde o chat pode controlar?", font=("Segoe UI", 13, "bold")).grid(
+            row=0, column=0, sticky="w"
+        )
+        ttk.Label(
+            tab,
+            text=(
+                "As teclas e o mouse são enviados diretamente à janela escolhida. "
+                "OBS, navegador e outros programas não recebem esses comandos."
+            ),
+            wraplength=900,
+        ).grid(row=1, column=0, sticky="w", pady=(4, 12))
+
+        self.target_mode_var = tk.StringVar(value=str(target.get("mode", "program")))
+        modes = ttk.Frame(tab)
+        modes.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        ttk.Radiobutton(
+            modes,
+            text="Programa/jogo já aberto",
+            variable=self.target_mode_var,
+            value="program",
+        ).pack(side="left")
+        ttk.Radiobutton(
+            modes,
+            text="Emulador + ROM",
+            variable=self.target_mode_var,
+            value="emulator",
+        ).pack(side="left", padx=(22, 0))
+
+        body = ttk.Panedwindow(tab, orient="vertical")
+        body.grid(row=3, column=0, sticky="nsew")
+
+        programs = ttk.LabelFrame(body, text="Programa ou jogo aberto", padding=10)
+        programs.columnconfigure(0, weight=1)
+        programs.rowconfigure(1, weight=1)
+        body.add(programs, weight=3)
+
+        program_bar = ttk.Frame(programs)
+        program_bar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        program_bar.columnconfigure(0, weight=1)
+        ttk.Label(
+            program_bar,
+            text="Para Minecraft, escolha a janela do jogo (normalmente javaw.exe), não o launcher.",
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Button(
+            program_bar,
+            text="Atualizar lista",
+            command=self._refresh_targets,
+        ).grid(row=0, column=1, padx=(8, 0))
+
+        columns = ("title", "process", "pid", "exe")
+        self.target_tree = ttk.Treeview(
+            programs,
+            columns=columns,
+            show="headings",
+            selectmode="browse",
+            height=8,
+        )
+        for column, heading, width in (
+            ("title", "Janela", 310),
+            ("process", "Processo", 130),
+            ("pid", "PID", 75),
+            ("exe", "Executável", 390),
+        ):
+            self.target_tree.heading(column, text=heading)
+            self.target_tree.column(column, width=width, anchor="w")
+        self.target_tree.grid(row=1, column=0, sticky="nsew")
+        target_scroll = ttk.Scrollbar(programs, orient="vertical", command=self.target_tree.yview)
+        target_scroll.grid(row=1, column=1, sticky="ns")
+        self.target_tree.configure(yscrollcommand=target_scroll.set)
+        self.target_tree.bind("<<TreeviewSelect>>", self._on_target_selected)
+
+        self.selected_target_var = tk.StringVar(value="Nenhum programa selecionado")
+        ttk.Label(programs, textvariable=self.selected_target_var).grid(
+            row=2, column=0, sticky="w", pady=(8, 0)
+        )
+
+        emulator = ttk.LabelFrame(body, text="Emulador + ROM", padding=10)
+        emulator.columnconfigure(1, weight=1)
+        body.add(emulator, weight=2)
+
+        self.emulator_var = tk.StringVar(value=str(target.get("emulator_exe", "")))
+        self.rom_var = tk.StringVar(value=str(target.get("rom", "")))
+        ttk.Label(emulator, text="Emulador (.exe)").grid(row=0, column=0, sticky="w")
+        ttk.Entry(emulator, textvariable=self.emulator_var).grid(
+            row=0, column=1, sticky="ew", padx=8
+        )
+        ttk.Button(emulator, text="Procurar...", command=self._browse_emulator).grid(
+            row=0, column=2
+        )
+        ttk.Label(emulator, text="ROM / jogo").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(emulator, textvariable=self.rom_var).grid(
+            row=1, column=1, sticky="ew", padx=8, pady=(8, 0)
+        )
+        ttk.Button(emulator, text="Procurar...", command=self._browse_rom).grid(
+            row=1, column=2, pady=(8, 0)
+        )
+        ttk.Label(
+            emulator,
+            text=(
+                "Exemplo: visualboyadvance-m.exe + PK EMR (PT-BR).gba. "
+                "Ao iniciar, o ChatPlays abre o emulador com a ROM e controla somente essa janela."
+            ),
+            wraplength=840,
+        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+
+        ttk.Label(
+            tab,
+            text=(
+                "Segurança: se a janela selecionada fechar ou não for encontrada, o comando é ignorado. "
+                "O ChatPlays nunca troca automaticamente para o teclado global do Windows."
+            ),
+            wraplength=900,
+        ).grid(row=4, column=0, sticky="w", pady=(10, 0))
 
     def _build_connections_tab(self) -> None:
         tab = self.connections_tab
@@ -147,7 +275,10 @@ class ChatPlaysUI:
         )
         ttk.Label(
             tab,
-            text="Você pode preencher o Channel ID ou colar a URL da live. Twitch e YouTube podem funcionar juntos.",
+            text=(
+                "Você pode preencher o Channel ID ou colar a URL da live. "
+                "Twitch e YouTube podem funcionar juntos."
+            ),
             wraplength=720,
         ).grid(row=7, column=1, sticky="w", pady=(4, 0))
 
@@ -157,7 +288,12 @@ class ChatPlaysUI:
         tab.rowconfigure(0, weight=1)
 
         columns = ("name", "type", "target", "aliases", "duration")
-        self.command_tree = ttk.Treeview(tab, columns=columns, show="headings", selectmode="browse")
+        self.command_tree = ttk.Treeview(
+            tab,
+            columns=columns,
+            show="headings",
+            selectmode="browse",
+        )
         headings = {
             "name": "Nome",
             "type": "Tipo",
@@ -213,7 +349,10 @@ class ChatPlaysUI:
         )
         ttk.Label(
             editor,
-            text="Separe aliases por vírgula. Mouse move usa dx,dy, por exemplo 80,0. Teclas aceitam combos como shift+f5.",
+            text=(
+                "Separe aliases por vírgula. Mouse move usa dx,dy, por exemplo 80,0. "
+                "Teclas aceitam combos como shift+f5."
+            ),
             wraplength=760,
         ).grid(row=3, column=0, columnspan=4, sticky="w", pady=(8, 0))
 
@@ -250,14 +389,23 @@ class ChatPlaysUI:
             ("Duração padrão de tecla (s)", self.default_press_var),
         )
         for row, (label, variable) in enumerate(fields):
-            ttk.Label(tab, text=label).grid(row=row, column=0, sticky="w", pady=6, padx=(0, 12))
+            ttk.Label(tab, text=label).grid(
+                row=row,
+                column=0,
+                sticky="w",
+                pady=6,
+                padx=(0, 12),
+            )
             ttk.Entry(tab, textvariable=variable, width=16).grid(
                 row=row, column=1, sticky="w", pady=6
             )
 
         ttk.Label(
             tab,
-            text="Os valores padrão funcionam bem para a maioria dos jogos. Reduza message rate para responder mais rápido; aumente se o chat estiver muito caótico.",
+            text=(
+                "Os valores padrão funcionam bem para a maioria dos jogos. Reduza message rate "
+                "para responder mais rápido; aumente se o chat estiver muito caótico."
+            ),
             wraplength=720,
         ).grid(row=len(fields), column=0, columnspan=2, sticky="w", pady=(16, 0))
 
@@ -277,6 +425,69 @@ class ChatPlaysUI:
         self.stop_button.grid(row=0, column=2, padx=(8, 0))
         self.start_button = ttk.Button(footer, text="Iniciar", command=self._start)
         self.start_button.grid(row=0, column=3, padx=(8, 0))
+
+    def _browse_emulator(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Selecione o executável do emulador",
+            filetypes=[("Executáveis do Windows", "*.exe"), ("Todos os arquivos", "*.*")],
+        )
+        if path:
+            self.target_mode_var.set("emulator")
+            self.emulator_var.set(path)
+
+    def _browse_rom(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Selecione a ROM / jogo",
+            filetypes=[
+                ("ROMs", "*.gba *.gb *.gbc *.nds *.n64 *.z64 *.sfc *.smc *.nes *.iso *.cue"),
+                ("Todos os arquivos", "*.*"),
+            ],
+        )
+        if path:
+            self.target_mode_var.set("emulator")
+            self.rom_var.set(path)
+
+    def _refresh_targets(self) -> None:
+        saved = self.config.get("target", {})
+        saved_pid = int(saved.get("pid") or 0)
+        saved_exe = normalize_path(saved.get("exe"))
+        current_pid = self.selected_window.pid if self.selected_window else saved_pid
+        current_exe = normalize_path(self.selected_window.exe) if self.selected_window else saved_exe
+
+        for item in self.target_tree.get_children():
+            self.target_tree.delete(item)
+        self.open_windows.clear()
+
+        for window in list_open_windows():
+            item_id = str(window.hwnd)
+            self.open_windows[item_id] = window
+            self.target_tree.insert(
+                "",
+                "end",
+                iid=item_id,
+                values=(window.title, window.process, window.pid, window.exe),
+            )
+            if window.pid == current_pid or (
+                current_exe and window.exe and normalize_path(window.exe) == current_exe
+            ):
+                self.target_tree.selection_set(item_id)
+                self.target_tree.see(item_id)
+                self.selected_window = window
+                self.selected_target_var.set(window.label)
+
+        if not self.open_windows:
+            self.selected_target_var.set("Nenhuma janela aberta encontrada.")
+
+    def _on_target_selected(self, _event: tk.Event) -> None:
+        selected = self.target_tree.selection()
+        if not selected:
+            return
+        window = self.open_windows.get(selected[0])
+        if not window:
+            return
+        self.selected_window = window
+        self.target_mode_var.set("program")
+        self.selected_target_var.set(window.label)
 
     def _refresh_command_table(self) -> None:
         for item in self.command_tree.get_children():
@@ -366,6 +577,51 @@ class ChatPlaysUI:
         self._new_command()
         self._refresh_command_table()
 
+    def _target_config(self) -> dict[str, Any]:
+        mode = self.target_mode_var.get().strip().lower()
+        if mode == "emulator":
+            emulator = normalize_path(self.emulator_var.get())
+            rom = normalize_path(self.rom_var.get())
+            target = {
+                "mode": "emulator",
+                "pid": 0,
+                "title": "",
+                "process": Path(emulator).name if emulator else "",
+                "exe": emulator,
+                "emulator_exe": emulator,
+                "rom": rom,
+            }
+            TargetResolver(target).validate()
+            return target
+
+        if mode != "program":
+            raise ValueError("Escolha Programa/jogo já aberto ou Emulador + ROM.")
+
+        if self.selected_window:
+            window = self.selected_window
+            target = {
+                "mode": "program",
+                "pid": window.pid,
+                "title": window.title,
+                "process": window.process,
+                "exe": window.exe,
+                "emulator_exe": self.emulator_var.get().strip(),
+                "rom": self.rom_var.get().strip(),
+            }
+        else:
+            saved = self.config.get("target", {})
+            target = {
+                "mode": "program",
+                "pid": int(saved.get("pid") or 0),
+                "title": str(saved.get("title") or ""),
+                "process": str(saved.get("process") or ""),
+                "exe": normalize_path(saved.get("exe")),
+                "emulator_exe": self.emulator_var.get().strip(),
+                "rom": self.rom_var.get().strip(),
+            }
+        TargetResolver(target).validate()
+        return target
+
     def _build_config(self) -> dict[str, Any]:
         if self.command_name_var.get().strip() and not self._save_command(silent=True):
             raise ValueError("Existe um comando inválido no editor.")
@@ -385,6 +641,7 @@ class ChatPlaysUI:
                 "youtube_channel_id": self.youtube_id_var.get().strip(),
                 "youtube_stream_url": self.youtube_url_var.get().strip(),
             },
+            "target": self._target_config(),
             "countdown_seconds": countdown,
             "queue": {
                 "message_rate": message_rate,
@@ -412,18 +669,20 @@ class ChatPlaysUI:
         if self.worker and self.worker.is_alive():
             return
         if not self._save_config(notify=False):
+            self.notebook.select(self.target_tab)
             return
         try:
             config = load_config(self.config_path)
             CommandRegistry(config["commands"], config["input"]["default_press_seconds"])
+            TargetResolver(config["target"]).validate()
         except (ConfigError, OSError, TypeError, ValueError) as exc:
             messagebox.showerror("Configuração incompleta", str(exc))
-            self.notebook.select(self.connections_tab)
             return
 
         self.stop_event = threading.Event()
         self._set_status("Iniciando...", running=True)
         self._append_log("Iniciando ChatPlays...")
+        self.notebook.select(self.log_tab)
         self.worker = threading.Thread(
             target=self._run_worker,
             args=(config, self.stop_event),

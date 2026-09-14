@@ -14,6 +14,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "youtube_channel_id": "",
         "youtube_stream_url": "",
     },
+    "target": {
+        "mode": "program",
+        "pid": 0,
+        "title": "",
+        "process": "",
+        "exe": "",
+        "emulator_exe": "",
+        "rom": "",
+    },
     "countdown_seconds": 5,
     "queue": {"message_rate": 0.35, "max_length": 20, "workers": 20},
     "input": {"default_press_seconds": 0.08},
@@ -73,7 +82,7 @@ def read_config(path: str | Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ConfigError("config root must be an object")
 
-    for section in ("stream", "queue", "input"):
+    for section in ("stream", "target", "queue", "input"):
         _merge_defaults(data, section)
     data.setdefault("countdown_seconds", DEFAULT_CONFIG["countdown_seconds"])
     if not isinstance(data.get("commands"), dict):
