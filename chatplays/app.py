@@ -52,7 +52,7 @@ class ChatPlaysApp:
     ) -> None:
         self.config = config
         self.log = logger
-        self.input = input_backend or GameInput()
+        self.input = input_backend or GameInput(config.get("target", {}), logger=logger)
         self.registry = CommandRegistry(
             config["commands"], config["input"]["default_press_seconds"]
         )
@@ -74,15 +74,21 @@ class ChatPlaysApp:
 
     def run(self, stop_event: Event | None = None) -> None:
         stop_event = stop_event or Event()
+        prepare = getattr(self.input, "prepare", None)
+        if callable(prepare):
+            prepare()
+        if stop_event.is_set():
+            return
+
         countdown = max(0, int(self.config.get("countdown_seconds", 5)))
         if countdown:
-            self.log(f"Iniciando em {countdown}s. Coloque o jogo em foco.")
+            self.log(f"Iniciando em {countdown}s. O controle ficará preso à janela selecionada.")
             for remaining in range(countdown, 0, -1):
                 self.log(str(remaining))
                 if stop_event.wait(1):
                     return
 
-        self.log("ChatPlays iniciado.")
+        self.log("ChatPlays iniciado com controle isolado na janela alvo.")
         try:
             while not stop_event.is_set():
                 received = 0
