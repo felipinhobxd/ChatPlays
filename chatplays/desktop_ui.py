@@ -1,10 +1,14 @@
+import threading
+from tkinter import messagebox
+
+from .config import ConfigError, load_runtime_config
 from .target import list_open_windows
 from .ui import ChatPlaysUI as BaseChatPlaysUI
 from .ui_targeting import choose_target_window
 
 
 class ChatPlaysUI(BaseChatPlaysUI):
-    """Desktop UI with fail-closed target selection."""
+    """Desktop UI with fail-closed target selection and shared runtime validation."""
 
     def _refresh_targets(self) -> None:
         windows = list_open_windows()
@@ -39,3 +43,27 @@ class ChatPlaysUI(BaseChatPlaysUI):
             self.selected_target_var.set("Selecione a janela exata do jogo.")
         else:
             self.selected_target_var.set("Nenhuma janela aberta encontrada.")
+
+    def _start(self) -> None:
+        if self.worker and self.worker.is_alive():
+            return
+        if not self._save_config(notify=False):
+            self.notebook.select(self.target_tab)
+            return
+        try:
+            config = load_runtime_config(self.config_path)
+        except (ConfigError, OSError, TypeError, ValueError) as exc:
+            messagebox.showerror("Configuração incompleta", str(exc))
+            return
+
+        self.stop_event = threading.Event()
+        self._set_status("Iniciando...", running=True)
+        self._append_log("Iniciando ChatPlays...")
+        self.notebook.select(self.log_tab)
+        self.worker = threading.Thread(
+            target=self._run_worker,
+            args=(config, self.stop_event),
+            daemon=True,
+            name="ChatPlaysRuntime",
+        )
+        self.worker.start()
