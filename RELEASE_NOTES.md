@@ -1,15 +1,19 @@
-# ChatPlays v4.1.1
+# ChatPlays v4.1.2
 
-This maintenance release keeps the v4.1.0 behavior while tightening lifecycle, target safety, configuration persistence and regression coverage.
+This release focuses on safer shutdown, deterministic input handling and a cleaner game-switching workflow without changing the isolated-input safety model.
 
-- Runtime cleanup now runs even when startup is cancelled during countdown or target preparation fails.
-- Pending executor work is cancelled before held inputs are released during shutdown.
-- Multi-key combos roll back internal/posted key state when a later key fails to send.
-- Window targeting now rejects explicit executable/process mismatches before considering title similarity.
-- Cached target windows are revalidated against their original PID to reduce HWND-reuse mistakes.
-- `config.json` saves are atomic, reducing the chance of corruption if a save is interrupted.
-- Runtime validation is centralized while preserving the existing editable/incomplete config loading behavior.
-- Added regression tests for lifecycle cleanup, strict target matching, combo rollback, config persistence and Twitch/YouTube parsing.
-- Ruff now includes bugbear (`B`) checks in addition to the existing lint rules.
+- Closing the desktop UI now waits for runtime cleanup before the process exits.
+- Timed key presses/clicks react to stop requests instead of sleeping blindly.
+- Twitch IRC decoding preserves split UTF-8 sequences such as accents and emoji.
+- Window selection is fail-closed when multiple equivalent processes (for example several `javaw.exe` windows) are open.
+- The packaged Windows executable is now launched during CI; CI fails if it exits immediately during startup.
+- Keyboard/mouse actions now use one serialized input dispatcher instead of concurrent workers.
+- `release` / `soltar` has priority: it can interrupt a timed action, clear older pending inputs and release held controls before newer commands continue.
+- The obsolete input-worker setting was removed from new configs/UI while older configs remain compatible.
+- Numeric runtime validation rejects non-finite values such as `NaN` and `inf`.
+- Added portable game profiles stored in `profiles.json` beside `config.json`.
+- Profiles contain target, commands and gameplay/input settings while deliberately preserving the active Twitch/YouTube connection settings.
+- Added built-in Minecraft and Pokémon / Emulador templates; executable/ROM paths are intentionally left for the user to select.
+- Added regression coverage for shutdown, UTF-8 streaming, target ambiguity, input ordering/preemption and profile persistence/isolation.
 
-No intentional UI, command syntax, Twitch/YouTube behavior, emulator/ROM workflow or isolated-input workflow changes are included.
+The core safety rule remains unchanged: ChatPlays sends input only to the explicitly resolved game window and never silently falls back to global Windows input.
