@@ -103,7 +103,24 @@ def read_config(path: str | Path) -> dict[str, Any]:
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
-    return validate_runtime_config(read_config(path))
+    """Load a usable editor config while preserving the pre-v4.1.1 contract."""
+    data = read_config(path)
+    stream = data["stream"]
+    if not any(
+        str(stream.get(key, "")).strip()
+        for key in ("twitch_channel", "youtube_channel_id", "youtube_stream_url")
+    ):
+        raise ConfigError("set a Twitch channel or YouTube channel/stream URL")
+
+    commands = data.get("commands")
+    if not isinstance(commands, dict) or not commands:
+        raise ConfigError("commands must be a non-empty object")
+    return data
+
+
+def load_runtime_config(path: str | Path) -> dict[str, Any]:
+    """Load and fully validate settings before starting the runtime."""
+    return validate_runtime_config(load_config(path))
 
 
 def _merge_defaults(data: dict[str, Any], name: str) -> None:
