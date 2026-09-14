@@ -4,7 +4,7 @@ from pathlib import Path
 
 from chatplays import __version__
 from chatplays.app import ChatPlaysApp
-from chatplays.config import ConfigError, create_default_config, load_config
+from chatplays.config import ConfigError, create_default_config, load_runtime_config
 from chatplays.ui import run_ui
 
 
@@ -28,7 +28,7 @@ def _run_headless(config_path: Path, check_only: bool) -> int:
         print(f"Created {config_path}")
         return 0
     try:
-        config = load_config(config_path)
+        config = load_runtime_config(config_path)
     except (ConfigError, OSError, TypeError, ValueError) as exc:
         print(f"Config error: {exc}", file=sys.stderr)
         return 2
