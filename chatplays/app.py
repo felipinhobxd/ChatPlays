@@ -90,7 +90,7 @@ class ChatPlaysApp:
         except KeyboardInterrupt:
             self.log("Parando ChatPlays...")
         finally:
-            self._cleanup()
+            self._cleanup(stop_event)
 
     def _countdown(self, stop_event: Event, seconds: int) -> bool:
         self.log(f"Iniciando em {seconds}s. O controle ficará preso à janela selecionada.")
@@ -104,40 +104,52 @@ class ChatPlaysApp:
         while not stop_event.is_set():
             received = 0
             for connection in self.connections:
+                if stop_event.is_set():
+                    break
                 messages = connection.poll()
                 received += len(messages)
                 self.queue.extend(messages)
 
             ready = self.queue.pop_ready()
             for message in ready:
-                self.executor.submit(self._handle_message, message)
+                if stop_event.is_set():
+                    break
+                self.executor.submit(self._handle_message, message, stop_event)
             if not ready and not received:
                 stop_event.wait(0.01)
 
-    def _cleanup(self) -> None:
+    def _cleanup(self, stop_event: Event) -> None:
+        # Stop producers first, then wait for already-running input actions to
+        # notice the event and release their own keys/buttons. Only after that
+        # do a final release_all(), so nothing can press a key after cleanup.
+        stop_event.set()
         for connection in self.connections:
             try:
                 connection.close()
             except (OSError, RuntimeError):
                 pass
-        self.executor.shutdown(wait=False, cancel_futures=True)
+        self.executor.shutdown(wait=True, cancel_futures=True)
         self.input.release_all()
         self.log("ChatPlays parado; teclas e botões foram soltos.")
 
-    def _handle_message(self, message: dict[str, str]) -> None:
+    def _handle_message(self, message: dict[str, str], stop_event: Event | None = None) -> None:
+        if stop_event and stop_event.is_set():
+            return
         action = self.registry.resolve(message.get("message", ""))
-        if not action:
+        if not action or (stop_event and stop_event.is_set()):
             return
         self.log(
             f"[{message.get('platform', 'chat')}] {message.get('username', 'unknown')}: "
             f"{message.get('message', '')} -> {action.name}"
         )
         try:
-            self._execute(action)
+            self._execute(action, stop_event)
         except (OSError, RuntimeError, ValueError) as exc:
             self.log(f"[input] {action.name}: {exc}")
 
-    def _execute(self, action: ParsedAction) -> None:
+    def _execute(self, action: ParsedAction, stop_event: Event | None = None) -> None:
+        if stop_event and stop_event.is_set():
+            return
         if action.release_all:
             self.input.release_all()
             return
@@ -152,7 +164,7 @@ class ChatPlaysApp:
             if action.hold and action.duration is None:
                 self.input.key_down(key)
             else:
-                self.input.press_key(key, duration)
+                self.input.press_key(key, duration, stop_event=stop_event)
             return
 
         if "mouse_button" in spec:
@@ -160,7 +172,7 @@ class ChatPlaysApp:
             if action.hold and action.duration is None:
                 self.input.mouse_down(button)
             else:
-                self.input.click(button, duration)
+                self.input.click(button, duration, stop_event=stop_event)
             return
 
         move = spec.get("mouse_move")
