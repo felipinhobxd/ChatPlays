@@ -26,7 +26,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "rom": "",
     },
     "countdown_seconds": 5,
-    "queue": {"message_rate": 0.35, "max_length": 20, "workers": 20},
+    "queue": {"message_rate": 0.35, "max_length": 20},
     "input": {"default_press_seconds": 0.08},
     "commands": {
         "up": {"key": "up", "aliases": ["up", "cima"]},
@@ -55,8 +55,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
         "look_right": {
             "mouse_move": [80, 0],
-            "aliases": ["look right", "olhar direita", "mouse direita"],
-        },
+            "aliases": ["look right", "olhar direita", "mouse direita"]},
     },
 }
 
