@@ -1,13 +1,13 @@
 import time
 from collections import deque
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from typing import Any, Protocol
 
 from .commands import CommandRegistry, ParsedAction
 from .connections import TwitchConnection, YouTubeConnection
 from .input import GameInput
+from .input_dispatcher import InputDispatcher
 
 Log = Callable[[str], None]
 
@@ -58,7 +58,7 @@ class ChatPlaysApp:
         )
         queue = config["queue"]
         self.queue = MessageQueue(queue["message_rate"], queue["max_length"])
-        self.executor = ThreadPoolExecutor(max_workers=max(1, int(queue["workers"])))
+        self.input_dispatcher = InputDispatcher(self._execute_safely)
         self.connections = self._connections(config["stream"])
 
     def _connections(self, stream: dict[str, Any]) -> list[Connection]:
@@ -114,21 +114,22 @@ class ChatPlaysApp:
             for message in ready:
                 if stop_event.is_set():
                     break
-                self.executor.submit(self._handle_message, message, stop_event)
+                self._handle_message(message, stop_event)
             if not ready and not received:
                 stop_event.wait(0.01)
 
     def _cleanup(self, stop_event: Event) -> None:
-        # Stop producers first, then wait for already-running input actions to
-        # notice the event and release their own keys/buttons. Only after that
-        # do a final release_all(), so nothing can press a key after cleanup.
         stop_event.set()
         for connection in self.connections:
             try:
                 connection.close()
             except (OSError, RuntimeError):
                 pass
-        self.executor.shutdown(wait=True, cancel_futures=True)
+
+        # Stop queued/running input before the final release. The dispatcher
+        # cancels timed presses and waits for its single input worker to exit,
+        # so no action can press a key after release_all().
+        self.input_dispatcher.shutdown()
         self.input.release_all()
         self.log("ChatPlays parado; teclas e botões foram soltos.")
 
@@ -142,8 +143,11 @@ class ChatPlaysApp:
             f"[{message.get('platform', 'chat')}] {message.get('username', 'unknown')}: "
             f"{message.get('message', '')} -> {action.name}"
         )
+        self.input_dispatcher.submit(action)
+
+    def _execute_safely(self, action: ParsedAction, cancel_event: Event) -> None:
         try:
-            self._execute(action, stop_event)
+            self._execute(action, cancel_event)
         except (OSError, RuntimeError, ValueError) as exc:
             self.log(f"[input] {action.name}: {exc}")
 
