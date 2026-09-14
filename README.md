@@ -8,9 +8,9 @@ ChatPlays v4 is intentionally small. It keeps the useful idea behind [DougDoug's
 
 Download **`ChatPlays.exe`** from the latest GitHub Release and run it.
 
-On first launch it creates `config.json` beside the executable. Open that file, set your Twitch channel and/or YouTube channel/live URL, save it, then run ChatPlays again and focus the game.
+Double-click it. The app opens a native Windows UI where you configure Twitch/YouTube, commands, keys, mouse actions and timing, then press **Iniciar**. Settings are saved to `config.json` beside the executable automatically.
 
-No Python, Node.js, browser wizard, API key, or installer is required for the release build.
+No Python, Node.js, browser, API key, or installer is required for the release build.
 
 ## What it does
 
@@ -24,11 +24,14 @@ No Python, Node.js, browser wizard, API key, or installer is required for the re
 - `release` / `soltar` releases every input ChatPlays is holding.
 - Bounded DougDoug-style message queue prevents a whole chat batch firing at once.
 - Reconnects one platform without freezing the other.
-- `Ctrl+C` releases held inputs before shutdown.
+- The desktop UI starts/stops the runtime and shows a live log.
+- Closing or stopping the app releases held inputs safely.
 
 ## Configuration
 
-The first launch writes a ready-to-edit `config.json`. A command is just data:
+The **Conexões** tab configures Twitch and YouTube. The **Comandos** tab lets you add, edit or remove chat commands and map each one to a keyboard key, mouse button or relative mouse movement. The **Avançado** tab controls queue and timing values.
+
+ChatPlays still stores everything in a portable `config.json` beside the executable. A command is just data:
 
 ```json
 "jump": {"key": "space", "aliases": ["jump", "pular", "pulo"]}
@@ -70,6 +73,7 @@ Or double-click `run.bat`.
 Useful commands:
 
 ```powershell
+.venv\Scripts\python main.py --headless
 .venv\Scripts\python main.py --check
 .venv\Scripts\python main.py --version
 python -m unittest discover -s tests -v
@@ -84,6 +88,7 @@ chatplays/commands.py    parser + aliases + HOLD
 chatplays/connections.py Twitch + YouTube readers
 chatplays/input.py       Windows SendInput backend
 chatplays/config.py      defaults + config validation
+chatplays/ui.py          native Tkinter desktop UI
 tests/                   targeted regression tests
 ```
 
