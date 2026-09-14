@@ -5,7 +5,7 @@ from pathlib import Path
 from chatplays import __version__
 from chatplays.app import ChatPlaysApp
 from chatplays.config import ConfigError, create_default_config, load_runtime_config
-from chatplays.ui import ChatPlaysUI
+from chatplays.desktop_ui import ChatPlaysUI
 
 
 def default_config_path() -> Path:
