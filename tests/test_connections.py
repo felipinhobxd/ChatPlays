@@ -40,7 +40,7 @@ class ConnectionTests(unittest.TestCase):
     def test_twitch_split_utf8_sequence_is_preserved(self):
         connection = TwitchConnection("example")
         prefix = b":viewer!viewer@viewer.tmi.twitch.tv PRIVMSG #example :olhar "
-        suffix = "cima 😀\r\n".encode("utf-8")
+        suffix = "cima 😀\r\n".encode()
         split_at = suffix.index(b"\xf0") + 2
         connection.sock = FakeSocket([prefix + suffix[:split_at], suffix[split_at:]])
 
