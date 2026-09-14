@@ -25,6 +25,21 @@ jobs:
         run: python -c "import tkinter; import chatplays.ui"
       - name: Build Windows executable
         run: pyinstaller --clean --onefile --windowed --name ChatPlays main.py
-      - name: Verify executable
+      - name: Smoke-test executable
         shell: pwsh
-        run: if (-not (Test-Path "dist/ChatPlays.exe")) { throw "ChatPlays.exe was not built" }
+        run: |
+          $exe = Resolve-Path "dist/ChatPlays.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+          try {
+            Start-Sleep -Seconds 4
+            $process.Refresh()
+            if ($process.HasExited) {
+              throw "ChatPlays.exe exited during startup with code $($process.ExitCode)"
+            }
+          }
+          finally {
+            $process.Refresh()
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+            }
+          }
